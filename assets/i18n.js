@@ -54,7 +54,9 @@ export const messages = {
     generateImage: 'Generate',
     generating: 'Generating…',
     generatePrompt: 'Image prompt',
-    generateOptions: 'Answer options',
+    useImage: 'Use this image',
+    regenerate: 'Regenerate',
+    enlargeImage: 'Enlarge image',
     defaultImagePrompt: 'Default image prompt',
     defaultImagePromptHint:
       'Style notes added to every image prompt, e.g. flat vector, no text',
@@ -224,7 +226,9 @@ export const messages = {
     generateImage: 'Oluştur',
     generating: 'Oluşturuluyor…',
     generatePrompt: 'Görsel istemi',
-    generateOptions: 'Cevap seçenekleri',
+    useImage: 'Bu görseli kullan',
+    regenerate: 'Yeniden oluştur',
+    enlargeImage: 'Görseli büyüt',
     defaultImagePrompt: 'Varsayılan görsel istemi',
     defaultImagePromptHint:
       'Her görsel istemine eklenen stil notları, ör. düz vektör, yazı yok',

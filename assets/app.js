@@ -122,6 +122,8 @@ export function quizApp() {
     draft: null,
     showProblems: false,
     aiEnabled: false,
+    gen: { q: null, prompt: '', imageId: '' },
+    genOpen: false,
     imagePrompt: storage.get('imagePrompt'),
     draftOriginal: '',
     historyGame: null,
@@ -577,29 +579,35 @@ export function quizApp() {
     saveImagePrompt() {
       storage.set('imagePrompt', this.imagePrompt.trim());
     },
-    // Starting point for the generate box: the host's style text, the question
-    // and its options. The host can edit all of it.
-    generatePrefill(q) {
-      const options = q.choices.map((c) => c.trim()).filter(Boolean);
-      return [
-        this.imagePrompt.trim(),
-        q.text.trim(),
-        options.length ? `${this.t('generateOptions')}: ${options.join('; ')}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+    // The prompt starts as the host's style text plus the question. The host
+    // can edit it before generating.
+    openGenerate(q) {
+      this.error = '';
+      this.gen = {
+        q,
+        prompt: [this.imagePrompt.trim(), q.text.trim()].filter(Boolean).join('\n\n'),
+        imageId: '',
+      };
+      this.genOpen = true;
+      this.$refs.generateDialog.showModal();
     },
-    generateImage(q, prompt) {
-      if (!prompt.trim() || this.busy) return;
+    // Each call makes a new image. Earlier ones stay on the server and are
+    // pruned after a day if no quiz uses them.
+    generateImage() {
+      if (!this.gen.prompt.trim() || this.busy) return;
       return this.run(async () => {
-        q.imageId = (
+        this.gen.imageId = (
           await this.request('/ai/images', {
             method: 'POST',
-            body: { prompt },
+            body: { prompt: this.gen.prompt },
             timeout: 100000,
           })
         ).id;
       });
+    },
+    acceptGenerated() {
+      this.gen.q.imageId = this.gen.imageId;
+      this.$refs.generateDialog.close();
     },
     pasteImage(event, q) {
       const file = [...(event.clipboardData?.files ?? [])].find((f) =>

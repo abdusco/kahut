@@ -349,7 +349,7 @@
                       ></button></div
                   ></template>
                   <template x-if="!q.imageId"
-                    ><div class="image-drop" x-data="{ open: false, prompt: '' }">
+                    ><div class="image-drop">
                       <button
                         class="outline small"
                         :disabled="busy"
@@ -364,35 +364,12 @@
                       />
                       <button
                         class="outline small"
-                        x-show="aiEnabled && !open"
+                        x-show="aiEnabled"
                         :disabled="busy"
-                        @click="prompt = generatePrefill(q); open = true"
+                        @click="openGenerate(q)"
                         x-text="'✨ ' + t('generateImage')"
                       ></button>
-                      <span class="muted small-text" x-text="t('imageHint')"></span>
-                      <div class="image-generate" x-show="aiEnabled && open">
-                        <label x-text="t('generatePrompt')"></label>
-                        <textarea
-                          x-model="prompt"
-                          maxlength="2000"
-                          rows="5"
-                          :disabled="busy"
-                        ></textarea>
-                        <div class="actions">
-                          <button
-                            class="primary small"
-                            :disabled="busy || !prompt.trim()"
-                            @click="generateImage(q, prompt)"
-                            x-text="busy ? t('generating') : '✨ ' + t('generateImage')"
-                          ></button>
-                          <button
-                            class="quiet small"
-                            :disabled="busy"
-                            @click="open = false"
-                            x-text="t('cancel')"
-                          ></button>
-                        </div>
-                      </div></div
+                      <span class="muted small-text" x-text="t('imageHint')"></span></div
                   ></template>
                 </div>
                 <p class="muted small-text" x-text="t('markCorrect')"></p>
@@ -847,6 +824,78 @@
           x-text="t('install')"
         ></button>
       </div>
+    </dialog>
+    <dialog
+      class="import-dialog generate-dialog"
+      x-ref="generateDialog"
+      aria-labelledby="generate-heading"
+      @cancel="if(busy) $event.preventDefault()"
+      @close="genOpen = false; error = ''"
+    >
+      <div class="dialog-heading">
+        <h2 id="generate-heading" x-text="'✨ ' + t('generateImage')"></h2>
+        <button
+          class="quiet"
+          :disabled="busy"
+          @click="$refs.generateDialog.close()"
+          :aria-label="t('dismiss')"
+        >
+          ×
+        </button>
+      </div>
+      <template x-if="genOpen && error">
+        <div class="notice error" role="alert" x-text="error"></div>
+      </template>
+      <label for="generate-prompt" x-text="t('generatePrompt')"></label>
+      <textarea
+        id="generate-prompt"
+        x-model="gen.prompt"
+        maxlength="2000"
+        rows="5"
+        :disabled="busy"
+      ></textarea>
+      <button
+        type="button"
+        class="generate-result"
+        x-show="gen.imageId"
+        :aria-label="t('enlargeImage')"
+        @click="$refs.lightbox.showModal()"
+      >
+        <img
+          :src="gen.imageId ? imageUrl(gen.imageId) : ''"
+          :alt="t('questionImage')"
+          :class="{ busy }"
+        />
+      </button>
+      <div class="actions generate-actions">
+        <button
+          class="primary"
+          x-show="gen.imageId"
+          :disabled="busy"
+          @click="acceptGenerated()"
+          x-text="t('useImage')"
+        ></button>
+        <button
+          :class="gen.imageId ? 'outline' : 'primary'"
+          :disabled="busy || !gen.prompt.trim()"
+          @click="generateImage()"
+          x-text="busy ? t('generating') : gen.imageId ? '↻ ' + t('regenerate') : '✨ ' + t('generateImage')"
+        ></button>
+        <button
+          class="quiet"
+          :disabled="busy"
+          @click="$refs.generateDialog.close()"
+          x-text="t('cancel')"
+        ></button>
+      </div>
+    </dialog>
+    <dialog
+      class="lightbox"
+      x-ref="lightbox"
+      :aria-label="t('questionImage')"
+      @click="$el.close()"
+    >
+      <img :src="gen.imageId ? imageUrl(gen.imageId) : ''" :alt="t('questionImage')" />
     </dialog>
     <dialog
       class="import-dialog"

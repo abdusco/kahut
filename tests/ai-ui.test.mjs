@@ -78,18 +78,34 @@ test(
       await inputs[1].fill('Rome');
 
       await editor.getByRole('button', { name: '✨ Generate' }).click();
-      const box = editor.locator('.image-generate textarea');
-      assert.equal(
-        await box.inputValue(),
-        'Flat vector\n\nCapital of France?\n\nAnswer options: Paris; Rome',
-      );
+      const dialog = page.locator('dialog.generate-dialog');
+      await dialog.waitFor();
+      const box = dialog.locator('textarea');
+      // Only the question is used, not the answers.
+      assert.equal(await box.inputValue(), 'Flat vector\n\nCapital of France?');
       await box.fill('A watercolor of the Eiffel Tower');
-      await editor
-        .locator('.image-generate')
-        .getByRole('button', { name: '✨ Generate' })
-        .click();
+      await dialog.getByRole('button', { name: '✨ Generate' }).last().click();
+      await dialog.locator('.generate-result img').waitFor();
+
+      // The result opens in a lightbox, and a click closes it.
+      await dialog.locator('.generate-result').click();
+      await page.locator('dialog.lightbox img').waitFor();
+      await page.locator('dialog.lightbox').click();
+      await page.locator('dialog.lightbox').waitFor({ state: 'hidden' });
+
+      // Regenerate keeps the dialog open; nothing is attached until accepted.
+      await dialog.getByRole('button', { name: '↻ Regenerate' }).click();
+      await dialog.getByRole('button', { name: '↻ Regenerate' }).waitFor();
+      assert.equal(await editor.locator('.image-preview img').count(), 0);
+      assert.equal(prompts.length, 2);
+
+      await dialog.getByRole('button', { name: 'Use this image' }).click();
       await editor.locator('.image-preview img').waitFor();
-      assert.deepEqual(prompts, ['A watercolor of the Eiffel Tower']);
+      await dialog.waitFor({ state: 'hidden' });
+      assert.deepEqual(prompts, [
+        'A watercolor of the Eiffel Tower',
+        'A watercolor of the Eiffel Tower',
+      ]);
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

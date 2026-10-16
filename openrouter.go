@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strings"
@@ -59,7 +60,9 @@ type imagesResponse struct {
 // Generate returns the bytes of the first image the model produced. It uses
 // the /images endpoint, which image-only models require.
 func (o *openRouter) Generate(ctx context.Context, prompt string) ([]byte, error) {
-	body, err := json.Marshal(map[string]any{"model": o.model, "prompt": prompt})
+	// A fresh seed per call so regenerating gives a different image. Models
+	// that ignore seeds still vary between calls.
+	body, err := json.Marshal(map[string]any{"model": o.model, "prompt": prompt, "seed": rand.Int32()})
 	if err != nil {
 		return nil, err
 	}

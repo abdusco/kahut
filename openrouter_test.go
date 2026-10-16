@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -37,6 +38,29 @@ func TestOpenRouterGenerate(t *testing.T) {
 	}
 	if req.Header.Get("Authorization") != "Bearer k" || req.URL.Path != "/images" {
 		t.Fatalf("bad request: %s %v", req.URL.Path, req.Header)
+	}
+}
+
+func TestOpenRouterGenerateSendsFreshSeeds(t *testing.T) {
+	var mu sync.Mutex
+	seeds := map[float64]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		seeds[body["seed"].(float64)] = true
+		mu.Unlock()
+		_, _ = w.Write([]byte(imageReply(base64.StdEncoding.EncodeToString([]byte("x")))))
+	}))
+	defer srv.Close()
+	o := &openRouter{key: "k", model: "m", base: srv.URL, client: srv.Client()}
+	for range 5 {
+		if _, err := o.Generate(context.Background(), "a cat"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(seeds) < 2 {
+		t.Fatalf("seeds repeat: %v", seeds)
 	}
 }
 
