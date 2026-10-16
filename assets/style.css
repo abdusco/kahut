@@ -1003,6 +1003,13 @@ main > section[hidden] {
   align-items: flex-start;
   gap: 8px;
 }
+.image-zoom {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
 .image-preview img {
   display: block;
   max-width: 100%;

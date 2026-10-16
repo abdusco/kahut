@@ -72,6 +72,16 @@ test(
         .setInputFiles({ name: 'a.png', mimeType: 'image/png', buffer: PNG });
       await editors.nth(0).locator('.image-preview img').waitFor();
 
+      // Clicking the preview enlarges it in the lightbox; a click closes it.
+      await editors.nth(0).locator('.image-zoom').click();
+      await page.locator('dialog.lightbox[open] img').waitFor();
+      assert.match(
+        await page.locator('dialog.lightbox img').getAttribute('src'),
+        /^\/api\/images\//,
+      );
+      await page.locator('dialog.lightbox').click();
+      await page.locator('dialog.lightbox[open]').waitFor({ state: 'detached' });
+
       // Unsupported and oversized files are rejected before upload.
       await page.getByRole('button', { name: 'Add question', exact: false }).click();
       const second = editors.nth(1);

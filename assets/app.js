@@ -124,6 +124,7 @@ export function quizApp() {
     aiEnabled: false,
     gen: { q: null, prompt: '', imageId: '' },
     genOpen: false,
+    zoomId: '',
     imagePrompt: storage.get('imagePrompt'),
     draftOriginal: '',
     stash: null, // { user, id, draft }: the unsaved draft, persisted by init()
@@ -599,6 +600,10 @@ export function quizApp() {
     },
     imageUrl(id) {
       return `/api/images/${encodeURIComponent(id)}`;
+    },
+    zoom(id) {
+      this.zoomId = id;
+      this.$refs.lightbox.showModal();
     },
     // Uploads immediately so the editor can preview the image. Unsaved uploads
     // that no quiz uses are removed by the server after a day.

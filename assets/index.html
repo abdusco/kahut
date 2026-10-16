@@ -341,7 +341,14 @@
                 <div class="image-editor">
                   <template x-if="q.imageId"
                     ><div class="image-preview">
-                      <img :src="imageUrl(q.imageId)" :alt="t('questionImage')" />
+                      <button
+                        type="button"
+                        class="image-zoom"
+                        :aria-label="t('enlargeImage')"
+                        @click="zoom(q.imageId)"
+                      >
+                        <img :src="imageUrl(q.imageId)" :alt="t('questionImage')" />
+                      </button>
                       <button
                         class="quiet small danger"
                         @click="delete q.imageId"
@@ -860,7 +867,7 @@
         class="generate-result"
         x-show="gen.imageId"
         :aria-label="t('enlargeImage')"
-        @click="$refs.lightbox.showModal()"
+        @click="zoom(gen.imageId)"
       >
         <img
           :src="gen.imageId ? imageUrl(gen.imageId) : ''"
@@ -896,7 +903,7 @@
       :aria-label="t('questionImage')"
       @click="$el.close()"
     >
-      <img :src="gen.imageId ? imageUrl(gen.imageId) : ''" :alt="t('questionImage')" />
+      <img :src="zoomId ? imageUrl(zoomId) : ''" :alt="t('questionImage')" />
     </dialog>
     <dialog
       class="import-dialog"
