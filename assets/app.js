@@ -121,6 +121,8 @@ export function quizApp() {
     games: [],
     draft: null,
     showProblems: false,
+    aiEnabled: false,
+    imagePrompt: storage.get('imagePrompt'),
     draftOriginal: '',
     historyGame: null,
     savedRoom: storage.saved()?.room || '',
@@ -334,9 +336,15 @@ export function quizApp() {
       this.home();
       this.error = this.t('expired');
     },
-    async request(path, { method = 'GET', body, raw, token = this.hostToken } = {}) {
+    async request(
+      path,
+      { method = 'GET', body, raw, token = this.hostToken, timeout: limit } = {},
+    ) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), raw ? 30000 : 10000);
+      const timeout = setTimeout(
+        () => controller.abort(),
+        limit ?? (raw ? 30000 : 10000),
+      );
       try {
         const response = await fetch(`/api${path}`, {
           method,
@@ -487,6 +495,7 @@ export function quizApp() {
       // Quiz documents are JSON. Serialization also unwraps Alpine's proxies,
       // which structuredClone cannot copy.
       this.showProblems = false;
+      this.loadAiStatus();
       this.draft = JSON.parse(JSON.stringify(quiz));
       this.draftOriginal = JSON.stringify(this.draft);
       this.setView('editor');
@@ -556,6 +565,40 @@ export function quizApp() {
       }
       return this.run(async () => {
         q.imageId = (await this.request('/images', { method: 'POST', raw: file })).id;
+      });
+    },
+    async loadAiStatus() {
+      try {
+        this.aiEnabled = (await this.request('/ai/status')).enabled;
+      } catch {
+        this.aiEnabled = false;
+      }
+    },
+    saveImagePrompt() {
+      storage.set('imagePrompt', this.imagePrompt.trim());
+    },
+    // Starting point for the generate box: the host's style text, the question
+    // and its options. The host can edit all of it.
+    generatePrefill(q) {
+      const options = q.choices.map((c) => c.trim()).filter(Boolean);
+      return [
+        this.imagePrompt.trim(),
+        q.text.trim(),
+        options.length ? `${this.t('generateOptions')}: ${options.join('; ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+    },
+    generateImage(q, prompt) {
+      if (!prompt.trim() || this.busy) return;
+      return this.run(async () => {
+        q.imageId = (
+          await this.request('/ai/images', {
+            method: 'POST',
+            body: { prompt },
+            timeout: 100000,
+          })
+        ).id;
       });
     },
     pasteImage(event, q) {

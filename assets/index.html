@@ -349,7 +349,7 @@
                       ></button></div
                   ></template>
                   <template x-if="!q.imageId"
-                    ><div class="image-drop">
+                    ><div class="image-drop" x-data="{ open: false, prompt: '' }">
                       <button
                         class="outline small"
                         :disabled="busy"
@@ -362,7 +362,37 @@
                         hidden
                         @change="addImage(q, $event.target.files[0]); $event.target.value = ''"
                       />
-                      <span class="muted small-text" x-text="t('imageHint')"></span></div
+                      <button
+                        class="outline small"
+                        x-show="aiEnabled && !open"
+                        :disabled="busy"
+                        @click="prompt = generatePrefill(q); open = true"
+                        x-text="'✨ ' + t('generateImage')"
+                      ></button>
+                      <span class="muted small-text" x-text="t('imageHint')"></span>
+                      <div class="image-generate" x-show="aiEnabled && open">
+                        <label x-text="t('generatePrompt')"></label>
+                        <textarea
+                          x-model="prompt"
+                          maxlength="2000"
+                          rows="5"
+                          :disabled="busy"
+                        ></textarea>
+                        <div class="actions">
+                          <button
+                            class="primary small"
+                            :disabled="busy || !prompt.trim()"
+                            @click="generateImage(q, prompt)"
+                            x-text="busy ? t('generating') : '✨ ' + t('generateImage')"
+                          ></button>
+                          <button
+                            class="quiet small"
+                            :disabled="busy"
+                            @click="open = false"
+                            x-text="t('cancel')"
+                          ></button>
+                        </div>
+                      </div></div
                   ></template>
                 </div>
                 <p class="muted small-text" x-text="t('markCorrect')"></p>
@@ -797,6 +827,19 @@
           <option value="light" x-text="t('light')"></option>
           <option value="dark" x-text="t('dark')"></option>
         </select>
+        <template x-if="hostToken && aiEnabled">
+          <div class="settings-field">
+            <label for="image-prompt" x-text="t('defaultImagePrompt')"></label>
+            <textarea
+              id="image-prompt"
+              x-model="imagePrompt"
+              maxlength="500"
+              rows="3"
+              :placeholder="t('defaultImagePromptHint')"
+              @change="saveImagePrompt()"
+            ></textarea>
+          </div>
+        </template>
         <button
           class="outline wide"
           x-show="installPrompt"

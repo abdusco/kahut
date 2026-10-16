@@ -940,6 +940,14 @@ main > section[hidden] {
   border: 1px dashed var(--line);
   border-radius: 12px;
 }
+.image-generate {
+  flex-basis: 100%;
+  display: grid;
+  gap: 8px;
+}
+.settings-field {
+  margin: 12px 0;
+}
 .image-preview {
   display: flex;
   flex-direction: column;
