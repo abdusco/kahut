@@ -37,6 +37,9 @@ func TestQuizValidation(t *testing.T) {
 		valid  bool
 	}{
 		{"valid", func(q *Quiz) {}, true},
+		{"three choices", func(q *Quiz) { q.Questions[0].Choices = append(q.Questions[0].Choices, "Earth") }, true},
+		{"four choices", func(q *Quiz) { q.Questions[0].Choices = append(q.Questions[0].Choices, "Earth", "Jupiter") }, true},
+		{"too many choices", func(q *Quiz) { q.Questions[0].Choices = append(q.Questions[0].Choices, "Earth", "Jupiter", "Saturn") }, false},
 		{"default timer", func(q *Quiz) { q.Questions[0].TimeLimitSeconds = 0 }, true},
 		{"wrong version", func(q *Quiz) { q.Version = 2 }, false},
 		{"empty title", func(q *Quiz) { q.Title = " " }, false},

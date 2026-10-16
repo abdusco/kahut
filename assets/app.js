@@ -383,7 +383,7 @@ export function quizApp() {
     blankQuestion() {
       return {
         text: '',
-        choices: ['', '', '', ''],
+        choices: ['', ''],
         correctIndex: 0,
         timeLimitSeconds: 20,
       };
@@ -440,6 +440,7 @@ export function quizApp() {
       questions.splice(index + delta, 0, q);
     },
     removeChoice(q, index) {
+      if (q.choices.length <= 2) return;
       q.choices.splice(index, 1);
       if (q.correctIndex === index) q.correctIndex = 0;
       else if (q.correctIndex > index) q.correctIndex--;

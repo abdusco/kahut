@@ -257,6 +257,26 @@ test('quiz validation rejects invalid scoring indices and timers', () => {
   assert.equal(validQuiz(quiz), false);
 });
 
+test('new questions start with two choices and preserve the correct answer when removing extras', () => {
+  const ui = quizApp();
+  ui.newQuiz();
+  const q = ui.draft.questions[0];
+  assert.deepEqual(q.choices, ['', '']);
+  ui.draft.title = 'Two choices';
+  q.text = 'Pick a letter';
+  q.choices = ['A', 'B'];
+  assert.equal(validQuiz(ui.draft), true);
+  ui.removeChoice(q, 0);
+  assert.deepEqual(q.choices, ['A', 'B']);
+  q.choices.push('C');
+  q.correctIndex = 2;
+  assert.equal(validQuiz(ui.draft), true);
+  ui.removeChoice(q, 0);
+  assert.deepEqual(q.choices, ['B', 'C']);
+  assert.equal(q.correctIndex, 1);
+  assert.equal(validQuiz(ui.draft), true);
+});
+
 test('editing a reactive quiz makes an independent draft without changing the library', () => {
   const original = {
     id: 'quiz-1',
