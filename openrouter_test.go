@@ -113,6 +113,38 @@ func TestOpenRouterGenerateSendsFreshSeeds(t *testing.T) {
 	}
 }
 
+func TestOpenRouterGenerateRetriesWithoutSeed(t *testing.T) {
+	var calls []bool // whether each request carried a seed
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, hasSeed := body["seed"]
+		calls = append(calls, hasSeed)
+		if hasSeed {
+			w.WriteHeader(400)
+			_, _ = w.Write([]byte(`{"error":{"message":"Model does not support: seed.","code":400}}`))
+			return
+		}
+		_, _ = w.Write([]byte(imageReply(base64.StdEncoding.EncodeToString([]byte("x")))))
+	}))
+	defer srv.Close()
+	o := &openRouter{key: "k", model: "m", base: srv.URL, client: srv.Client()}
+	if data, err := o.Generate(context.Background(), "a cat"); err != nil || string(data) != "x" {
+		t.Fatalf("got %q, %v", data, err)
+	}
+	if len(calls) != 2 || !calls[0] || calls[1] {
+		t.Fatalf("calls with seed = %v, want [true false]", calls)
+	}
+}
+
+func TestOpenRouterGenerateReportsUpstreamMessage(t *testing.T) {
+	o, _ := fakeOpenRouter(t, 400, `{"error":{"message":"bad prompt shape"}}`)
+	_, err := o.Generate(context.Background(), "x")
+	if !errors.Is(err, errAIUpstream) || !strings.Contains(err.Error(), "bad prompt shape") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestOpenRouterGenerateFailures(t *testing.T) {
 	cases := []struct {
 		name   string
