@@ -59,7 +59,27 @@ test(
       assert.equal(await host.locator('html').getAttribute('data-theme'), 'light');
       await settings.getByRole('button', { name: 'Dismiss', exact: true }).click();
       await settings.waitFor({ state: 'hidden' });
+      // Inspect the DOM at capture time, before the animation can mask a stale view.
+      await host.evaluate(() => {
+        window.viewCaptures = [];
+        const start = document.startViewTransition.bind(document);
+        document.startViewTransition = (update) =>
+          start(async () => {
+            await update();
+            window.viewCaptures.push({
+              view: Alpine.$data(document.body).view,
+              visibleSections: [...document.querySelectorAll('main > section')]
+                .filter((section) => getComputedStyle(section).display !== 'none')
+                .map((section) => section.contains(document.querySelector('#username'))),
+            });
+          });
+      });
       await host.getByRole('button', { name: 'Host a game', exact: true }).click();
+      await host.waitForFunction(() => window.viewCaptures.length > 0);
+      assert.deepEqual(await host.evaluate(() => window.viewCaptures[0]), {
+        view: 'login',
+        visibleSections: [true],
+      });
       await host.getByLabel('Username', { exact: true }).fill('host');
       await host.getByLabel('Password', { exact: true }).fill('browser-test-password');
       await host.getByRole('button', { name: 'Sign in', exact: true }).click();

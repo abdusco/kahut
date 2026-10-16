@@ -222,6 +222,8 @@ export function quizApp() {
       viewTransition = document.startViewTransition(async () => {
         if (change !== viewChange) return;
         this.view = view;
+        // Route sections use :hidden so Alpine's DOM flush is sufficient.
+        // x-show defers visibility to a frame after the snapshot is captured.
         await this.$nextTick();
       });
       viewTransition.ready.catch(() => {

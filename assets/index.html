@@ -60,7 +60,7 @@
       </div>
       <div class="notice" role="status" x-show="message" x-text="message"></div>
       <div class="notice" x-show="!online" x-text="t('offline')"></div>
-      <section class="narrow" x-show="view==='loading'">
+      <section class="narrow" :hidden="view !== 'loading'">
         <div class="panel connecting">
           <div class="spinner" x-show="busy"></div>
           <h2 x-text="busy ? t('loadingPage') : t('couldNotLoad')"></h2>
@@ -75,7 +75,7 @@
         </div>
       </section>
 
-      <section x-show="view === 'home'" class="home-grid">
+      <section :hidden="view !== 'home'" class="home-grid">
         <div class="hero">
           <h1>
             <span x-text="t('heroOne')"></span><br /><em x-text="t('heroTwo')"></em>
@@ -139,7 +139,7 @@
         </div>
       </section>
 
-      <section x-show="view === 'login'" class="narrow">
+      <section :hidden="view !== 'login'" class="narrow">
         <button class="quiet" @click="home()">← <span x-text="t('home')"></span></button>
         <form class="panel" @submit.prevent="login()">
           <span class="eyebrow" x-text="t('hostDesk')"></span>
@@ -162,7 +162,7 @@
         </form>
       </section>
 
-      <section x-show="view === 'library'">
+      <section :hidden="view !== 'library'">
         <div class="page-heading">
           <div>
             <span class="eyebrow" x-text="t('hostDesk')"></span>
@@ -264,7 +264,7 @@
         </div>
       </section>
 
-      <section x-show="view === 'editor' && draft">
+      <section :hidden="view !== 'editor' || !draft">
         <button class="quiet" @click="backToLibrary()">
           ← <span x-text="t('library')"></span>
         </button>
@@ -392,7 +392,7 @@
         ></template>
       </section>
 
-      <section x-show="view === 'room'">
+      <section :hidden="view !== 'room'">
         <div class="room-topline">
           <span class="eyebrow"
             ><span class="live-dot" :class="{'disconnected': !ready}"></span>
@@ -658,7 +658,7 @@
         ></template>
       </section>
 
-      <section x-show="view==='history' && historyGame">
+      <section :hidden="view !== 'history' || !historyGame">
         <div class="page-heading">
           <div>
             <button class="quiet" @click="backToLibrary()">
