@@ -100,6 +100,25 @@ test(
         document.getElementById('import-json').value.includes('Hat trick'),
       );
       await dialog.getByRole('button', { name: 'Import quiz', exact: true }).click();
+      await host.getByRole('button', { name: 'Edit', exact: true }).click();
+      assert.equal(await host.locator('.choice-editor.is-correct').count(), 1);
+      await host.getByRole('radio', { name: 'Correct answer 2', exact: true }).check();
+      assert.equal(
+        await host.locator('.choice-editor.is-correct input[type="text"]').inputValue(),
+        'Shoe',
+      );
+      await host.getByRole('button', { name: 'Save quiz', exact: true }).click();
+      await host.getByRole('button', { name: 'Edit', exact: true }).click();
+      assert.equal(
+        await host.locator('.choice-editor.is-correct input[type="text"]').inputValue(),
+        'Shoe',
+      );
+      await host.getByRole('radio', { name: 'Correct answer 1', exact: true }).check();
+      assert.equal(
+        await host.locator('.choice-editor.is-correct .correct-choice-label').isVisible(),
+        true,
+      );
+      await host.getByRole('button', { name: 'Save quiz', exact: true }).click();
       await host.getByRole('button', { name: 'Host', exact: true }).click();
       await host.waitForURL(/room=/);
       await player.goto(host.url());

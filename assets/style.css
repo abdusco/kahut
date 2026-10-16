@@ -798,13 +798,39 @@ main {
   gap: 12px;
 }
 .choice-editor {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   background: var(--soft);
   padding: 8px;
+  margin-top: 8px;
   border-radius: 10px;
+  border: 2px solid transparent;
   border-left: 4px solid var(--answer-color);
+}
+.choice-editor.is-correct {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 14%, var(--panel));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 12%, transparent);
+}
+.correct-choice-label {
+  position: absolute;
+  top: -11px;
+  left: 28px;
+  padding: 2px 9px;
+  border-radius: 20px;
+  background: var(--green);
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  font-weight: 800;
+}
+.choice-editor.is-correct input[type='radio'] {
+  accent-color: var(--green);
+}
+.choice-editor.is-correct input[type='text'] {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
 }
 .choice-editor input[type='radio'] {
   width: 18px;
