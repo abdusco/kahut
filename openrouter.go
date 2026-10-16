@@ -126,7 +126,7 @@ func (o *openRouter) post(ctx context.Context, payload map[string]any) (*http.Re
 }
 
 const (
-	jpegQuality  = 85
+	jpegQuality  = 70
 	maxPNGPixels = 16 << 20
 	pngSignature = "\x89PNG\r\n\x1a\n"
 )
