@@ -289,7 +289,12 @@
               />
             </div>
             <template x-for="(q,i) in draft.questions" :key="i"
-              ><article class="panel question-editor">
+              ><article
+                class="panel question-editor"
+                @paste="pasteImage($event, q)"
+                @dragover.prevent
+                @drop.prevent="dropImage($event, q)"
+              >
                 <div class="row">
                   <span class="eyebrow"
                     ><span x-text="t('question')"></span> <span x-text="i+1"></span
@@ -324,6 +329,33 @@
                   maxlength="1000"
                   rows="2"
                 ></textarea>
+                <div class="image-editor">
+                  <template x-if="q.imageId"
+                    ><div class="image-preview">
+                      <img :src="imageUrl(q.imageId)" :alt="t('questionImage')" />
+                      <button
+                        class="quiet small danger"
+                        @click="delete q.imageId"
+                        x-text="t('removeImage')"
+                      ></button></div
+                  ></template>
+                  <template x-if="!q.imageId"
+                    ><div class="image-drop">
+                      <button
+                        class="outline small"
+                        :disabled="busy"
+                        @click="$el.nextElementSibling.click()"
+                        x-text="t('addImage')"
+                      ></button
+                      ><input
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        hidden
+                        @change="addImage(q, $event.target.files[0]); $event.target.value = ''"
+                      />
+                      <span class="muted small-text" x-text="t('imageHint')"></span></div
+                  ></template>
+                </div>
                 <p class="muted small-text" x-text="t('markCorrect')"></p>
                 <div class="choice-editor-grid">
                   <template x-for="(choice,j) in q.choices" :key="j"

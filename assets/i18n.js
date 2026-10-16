@@ -45,6 +45,12 @@ export const messages = {
     quizTitle: 'Quiz title',
     quizTitleHint: 'A name worth remembering',
     questionText: 'What’s the question?',
+    questionImage: 'Question image',
+    addImage: 'Add image',
+    removeImage: 'Remove image',
+    imageHint: 'or drop or paste an image here (PNG, JPEG, GIF, WebP, up to 4 MB)',
+    imageType: 'Use a PNG, JPEG, GIF or WebP image.',
+    imageTooLarge: 'The image must be 4 MB or smaller.',
     markCorrect: 'Use 2–4 choices. Select the correct answer to highlight it in green.',
     correctAnswer: 'Correct answer',
     choice: 'Choice',
@@ -193,6 +199,13 @@ export const messages = {
     quizTitle: 'Yarışma başlığı',
     quizTitleHint: 'Akılda kalacak bir isim',
     questionText: 'Soru nedir?',
+    questionImage: 'Soru görseli',
+    addImage: 'Görsel ekle',
+    removeImage: 'Görseli kaldır',
+    imageHint:
+      'veya görseli buraya sürükle ya da yapıştır (PNG, JPEG, GIF, WebP, en fazla 4 MB)',
+    imageType: 'PNG, JPEG, GIF veya WebP görseli kullan.',
+    imageTooLarge: 'Görsel en fazla 4 MB olmalı.',
     markCorrect: '2–4 seçenek ekle. Doğru cevabı seçerek yeşil renkle vurgula.',
     correctAnswer: 'Doğru cevap',
     choice: 'Seçenek',
@@ -311,6 +324,9 @@ const errorsTR = {
   'too many attempts; retry in a minute':
     'Çok fazla deneme. Bir dakika sonra tekrar dene.',
   'nickname must contain 1–24 characters': 'Takma ad 1–24 karakter olmalı.',
+  'image must be 4 MB or smaller': 'Görsel en fazla 4 MB olmalı.',
+  'image must be PNG, JPEG, GIF or WebP': 'PNG, JPEG, GIF veya WebP görseli kullan.',
+  'question image not found; upload it again': 'Soru görseli bulunamadı. Tekrar yükle.',
   'storage operation failed; please retry': 'Kayıt işlemi başarısız. Lütfen tekrar dene.',
 };
 export function translateError(message, language) {

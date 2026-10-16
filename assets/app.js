@@ -33,6 +33,9 @@ const storage = {
   },
 };
 
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
 export function validQuiz(quiz) {
   return (
     quiz?.version === 1 &&
@@ -308,17 +311,18 @@ export function quizApp() {
       this.home();
       this.error = this.t('expired');
     },
-    async request(path, { method = 'GET', body, token = this.hostToken } = {}) {
+    async request(path, { method = 'GET', body, raw, token = this.hostToken } = {}) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      const timeout = setTimeout(() => controller.abort(), raw ? 30000 : 10000);
       try {
         const response = await fetch(`/api${path}`, {
           method,
           headers: {
             ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...(raw ? { 'Content-Type': raw.type } : {}),
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: body !== undefined ? JSON.stringify(body) : undefined,
+          body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined),
           signal: controller.signal,
           cache: 'no-store',
         });
@@ -510,6 +514,37 @@ export function quizApp() {
       const questions = this.draft.questions;
       const [q] = questions.splice(index, 1);
       questions.splice(index + delta, 0, q);
+    },
+    imageUrl(id) {
+      return `/api/images/${encodeURIComponent(id)}`;
+    },
+    // Uploads immediately so the editor can preview the image. Unsaved uploads
+    // that no quiz uses are removed by the server after a day.
+    addImage(q, file) {
+      if (!file || this.busy) return;
+      if (!IMAGE_TYPES.includes(file.type)) {
+        this.error = this.t('imageType');
+        return;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        this.error = this.t('imageTooLarge');
+        return;
+      }
+      return this.run(async () => {
+        q.imageId = (await this.request('/images', { method: 'POST', raw: file })).id;
+      });
+    },
+    pasteImage(event, q) {
+      const file = [...(event.clipboardData?.files ?? [])].find((f) =>
+        f.type.startsWith('image/'),
+      );
+      if (file) {
+        event.preventDefault();
+        this.addImage(q, file);
+      }
+    },
+    dropImage(event, q) {
+      this.addImage(q, event.dataTransfer.files[0]);
     },
     removeChoice(q, index) {
       if (q.choices.length <= 2) return;

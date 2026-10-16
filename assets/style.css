@@ -884,6 +884,30 @@ main > section[hidden] {
 .wrap {
   flex-wrap: wrap;
 }
+.image-editor {
+  margin-top: 10px;
+}
+.image-drop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+.image-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
 .choice-editor-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
