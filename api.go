@@ -242,6 +242,7 @@ func (a *App) login(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, map[string]any{"token": token, "session": s})
 }
+
 func (a *App) logout(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -257,10 +258,12 @@ func (a *App) logout(c *echo.Context) error {
 	a.mu.Unlock()
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }
+
 func (a *App) session(c *echo.Context) error {
 	session, _ := echo.ContextGet[Session](c, "session")
 	return c.JSON(http.StatusOK, session)
 }
+
 func (a *App) quizzes(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -270,6 +273,7 @@ func (a *App) quizzes(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, q)
 }
+
 func (a *App) saveQuiz(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -309,6 +313,7 @@ func (a *App) saveQuiz(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, q)
 }
+
 func (a *App) getQuiz(c *echo.Context) error {
 	return a.readQuiz(c, false)
 }
@@ -330,6 +335,7 @@ func (a *App) readQuiz(c *echo.Context, export bool) error {
 	}
 	return c.JSON(http.StatusOK, q)
 }
+
 func (a *App) deleteQuiz(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -340,6 +346,7 @@ func (a *App) deleteQuiz(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }
+
 func (a *App) createRoom(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -369,6 +376,7 @@ func (a *App) createRoom(c *echo.Context) error {
 	a.rooms[code] = room
 	return c.JSON(http.StatusOK, map[string]string{"room": code})
 }
+
 func (a *App) join(c *echo.Context) error {
 	r := c.Request()
 	var b struct {
@@ -404,6 +412,7 @@ func (a *App) join(c *echo.Context) error {
 	a.publish(room)
 	return c.JSON(http.StatusOK, map[string]any{"token": token, "room": room.Code, "session": s})
 }
+
 func (a *App) action(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -463,6 +472,7 @@ func (a *App) action(c *echo.Context) error {
 	a.publish(room)
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }
+
 func (a *App) games(c *echo.Context) error {
 	s, _ := echo.ContextGet[Session](c, "session")
 	a.mu.Lock()
@@ -476,6 +486,7 @@ func (a *App) games(c *echo.Context) error {
 	sort.Slice(out, func(i, j int) bool { return out[i]["createdAt"].(int64) > out[j]["createdAt"].(int64) })
 	return c.JSON(http.StatusOK, out)
 }
+
 func (a *App) game(c *echo.Context) error {
 	s, _ := echo.ContextGet[Session](c, "session")
 	a.mu.Lock()
@@ -490,6 +501,7 @@ func (a *App) game(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, map[string]any{"game": room, "snapshot": room.Snapshot("", true, a.online(room.Code), time.Now().UnixMilli())})
 }
+
 func (a *App) online(code string) map[string]int {
 	m := map[string]int{}
 	for st := range a.streams {
@@ -499,6 +511,7 @@ func (a *App) online(code string) map[string]int {
 	}
 	return m
 }
+
 func (a *App) publish(room Room) {
 	online := a.online(room.Code)
 	now := time.Now().UnixMilli()
@@ -514,6 +527,7 @@ func (a *App) publish(room Room) {
 		}
 	}
 }
+
 func (a *App) presence(code string) {
 	r := a.rooms[code]
 	r.Sequence++
@@ -524,6 +538,7 @@ func (a *App) presence(code string) {
 	a.rooms[code] = r
 	a.publish(r)
 }
+
 func (a *App) live(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -604,6 +619,7 @@ func (a *App) live(c *echo.Context) error {
 		}
 	}
 }
+
 func (a *App) timers() {
 	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
@@ -628,6 +644,7 @@ func (a *App) timers() {
 		}
 	}
 }
+
 func (a *App) closeStreams() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
