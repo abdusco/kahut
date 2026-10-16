@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -23,11 +24,16 @@ func main() {
 	if path == "" {
 		path = "./data/kahut.db"
 	}
-	s, err := openRepository(path, os.Getenv("SESSION_SIGNING_KEY"))
+	path, err := filepath.Abs(path)
 	if err != nil {
 		log.Fatal(err)
 	}
+	s, err := openRepository(path, os.Getenv("SESSION_SIGNING_KEY"))
+	if err != nil {
+		log.Fatalf("open database %q: %v", path, err)
+	}
 	defer s.Close()
+	log.Printf("using database %q", path)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	a, err := newApp(ctx, s, users)

@@ -2,11 +2,63 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestRepositorySchemaInitialization(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		version int
+	}{
+		{"new database", 0},
+		{"older schema", 1},
+		{"newer schema", 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "data", "kahut.db")
+			if tt.version != 0 {
+				path = filepath.Join(dir, "existing.db")
+				db, err := sql.Open("sqlite", path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tt.version == 1 {
+					_, err = db.Exec("PRAGMA user_version=1")
+				} else {
+					_, err = db.Exec("PRAGMA user_version=3")
+				}
+				db.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			repo, err := openRepository(path, "test-signing-key-at-least-32-bytes")
+			if tt.version != 0 {
+				if err == nil || !strings.Contains(err.Error(), "unsupported database schema version") {
+					t.Fatalf("expected schema version error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = repo.Close(); err != nil {
+				t.Fatal(err)
+			}
+			repo, err = openRepository(path, "test-signing-key-at-least-32-bytes")
+			if err != nil {
+				t.Fatal(err)
+			}
+			repo.Close()
+		})
+	}
+}
 
 func TestRestartRecovery(t *testing.T) {
 	for _, tt := range []struct {

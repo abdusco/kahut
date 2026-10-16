@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,7 @@ func openRepository(path, signingKey string) (*Repository, error) {
 		return nil, err
 	}
 	if version != 0 && version != 2 {
-		return nil, errors.New("unsupported database schema; set DB_PATH to a fresh database for multi-user support")
+		return nil, fmt.Errorf("unsupported database schema version %d (expected 2)", version)
 	}
 	if version == 0 {
 		tx, err := db.Begin()
