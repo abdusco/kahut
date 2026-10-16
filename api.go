@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"github.com/samber/lo"
 )
 
@@ -31,10 +31,6 @@ type stream struct {
 	conn    *websocket.Conn
 	updates chan []byte
 }
-type rateWindow struct {
-	until time.Time
-	count int
-}
 type App struct {
 	ctx     context.Context
 	repo    *Repository
@@ -42,7 +38,6 @@ type App struct {
 	mu      sync.Mutex
 	rooms   map[string]Room
 	streams map[*stream]bool
-	rates   map[string]rateWindow
 }
 
 func newApp(ctx context.Context, s *Repository, authUsers string) (*App, error) {
@@ -50,7 +45,7 @@ func newApp(ctx context.Context, s *Repository, authUsers string) (*App, error) 
 	if err != nil {
 		return nil, err
 	}
-	a := &App{ctx: ctx, repo: s, users: users, rooms: map[string]Room{}, streams: map[*stream]bool{}, rates: map[string]rateWindow{}}
+	a := &App{ctx: ctx, repo: s, users: users, rooms: map[string]Room{}, streams: map[*stream]bool{}}
 	rooms, err := s.Rooms(ctx)
 	if err != nil {
 		return nil, err
@@ -140,7 +135,27 @@ func (a *App) routes() http.Handler {
 	})
 	host := a.requireSession(true)
 	session := a.requireSession(false)
-	e.POST("/api/host/login", a.login)
+	// Echo's rates are requests per second. Keep separate per-IP token buckets
+	// for login (10/minute, burst 10) and joining (60/minute, burst 60).
+	loginLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
+			Rate:  10.0 / 60,
+			Burst: 10,
+		}),
+		DenyHandler: func(c *echo.Context, identifier string, err error) error {
+			return echo.NewHTTPError(http.StatusTooManyRequests, "too many attempts; retry in a minute")
+		},
+	})
+	joinLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
+			Rate:  1,
+			Burst: 60,
+		}),
+		DenyHandler: func(c *echo.Context, identifier string, err error) error {
+			return echo.NewHTTPError(http.StatusTooManyRequests, "too many attempts; retry in a minute")
+		},
+	})
+	e.POST("/api/host/login", a.login, loginLimiter)
 	e.POST("/api/host/logout", a.logout, host)
 	e.GET("/api/session", a.session, session)
 	e.GET("/api/live", a.live, session)
@@ -152,7 +167,7 @@ func (a *App) routes() http.Handler {
 	e.DELETE("/api/quizzes/:id", a.deleteQuiz, host)
 	e.GET("/api/quizzes/:id/export", a.exportQuiz, host)
 	e.POST("/api/rooms", a.createRoom, host)
-	e.POST("/api/join", a.join)
+	e.POST("/api/join", a.join, joinLimiter)
 	e.POST("/api/action", a.action, session)
 	e.GET("/api/games", a.games, host)
 	e.GET("/api/games/:id", a.game, host)
@@ -207,32 +222,8 @@ func (strictJSONSerializer) Deserialize(c *echo.Context, target any) error {
 	return nil
 }
 
-func (a *App) limited(r *http.Request, bucket string, max int) bool {
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	key := bucket + ":" + ip
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	now := time.Now()
-	v := a.rates[key]
-	if now.After(v.until) {
-		v = rateWindow{until: now.Add(time.Minute)}
-	}
-	v.count++
-	a.rates[key] = v
-	if len(a.rates) > 10000 {
-		for k, v := range a.rates {
-			if now.After(v.until) {
-				delete(a.rates, k)
-			}
-		}
-	}
-	return v.count > max
-}
 func (a *App) login(c *echo.Context) error {
 	r := c.Request()
-	if a.limited(r, "login", 10) {
-		return echo.NewHTTPError(http.StatusTooManyRequests, "too many attempts; retry in a minute")
-	}
 	var b struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -380,9 +371,6 @@ func (a *App) createRoom(c *echo.Context) error {
 }
 func (a *App) join(c *echo.Context) error {
 	r := c.Request()
-	if a.limited(r, "join", 60) {
-		return echo.NewHTTPError(http.StatusTooManyRequests, "too many attempts; retry in a minute")
-	}
 	var b struct {
 		Room string `json:"room"`
 		Name string `json:"name"`
