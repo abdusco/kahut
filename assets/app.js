@@ -67,6 +67,8 @@ export function quizApp() {
   // Keep sockets, native timers, and AbortControllers outside Alpine's reactive state.
   let live;
   let clock;
+  let viewTransition;
+  let viewChange = 0;
   return {
     language: storage.get(
       'language',
@@ -189,6 +191,8 @@ export function quizApp() {
         navigator.serviceWorker.register('/sw.js').catch(() => {});
     },
     destroy() {
+      viewChange++;
+      viewTransition?.skipTransition();
       live.stop();
       clearInterval(clock);
     },
@@ -198,12 +202,37 @@ export function quizApp() {
       document.documentElement.lang = this.language;
       document.documentElement.dataset.theme = this.theme;
     },
+    setView(view) {
+      const change = ++viewChange;
+      viewTransition?.skipTransition();
+      if (
+        this.view === view ||
+        typeof document === 'undefined' ||
+        !document.startViewTransition ||
+        !this.$nextTick ||
+        document.hidden ||
+        matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        this.view = view;
+        return;
+      }
+      // A newer navigation can arrive while the browser captures the old page.
+      // Only its callback may change the view; sockets and timers keep running.
+      viewTransition = document.startViewTransition(async () => {
+        if (change !== viewChange) return;
+        this.view = view;
+        await this.$nextTick();
+      });
+      viewTransition.ready.catch(() => {
+        // Hidden tabs and interrupted transitions may skip their animation.
+      });
+    },
     launch() {
       live.stop();
       this.state = null;
       this.token = '';
       this.isHost = false;
-      this.view = 'home';
+      this.setView('home');
       const route = resolveRoute(location.pathname, location.search);
       this.navigate(route.path, true);
       if (['host', 'newQuiz', 'editQuiz', 'history'].includes(route.kind)) {
@@ -224,7 +253,7 @@ export function quizApp() {
         else if (route.kind === 'resume') this.home();
       } else if (route.kind === 'resume') this.home();
       else if (route.kind === 'notFound') {
-        this.view = 'loading';
+        this.setView('loading');
         this.error = this.t('pageNotFound');
       }
     },
@@ -235,10 +264,10 @@ export function quizApp() {
     },
     async loadHostRoute(route) {
       if (!this.hostToken) {
-        this.view = 'login';
+        this.setView('login');
         return;
       }
-      this.view = 'loading';
+      this.setView('loading');
       if (route.kind === 'editQuiz') {
         const quiz = await this.request(`/quizzes/${encodeURIComponent(route.quizId)}`);
         this.setDraft(quiz, true);
@@ -255,7 +284,7 @@ export function quizApp() {
       this.state = null;
       this.token = '';
       this.isHost = false;
-      this.view = 'home';
+      this.setView('home');
       this.code = '';
       this.error = '';
       this.message = '';
@@ -300,7 +329,7 @@ export function quizApp() {
           ) {
             this.hostToken = '';
             storage.remove('hostToken');
-            this.view = 'login';
+            this.setView('login');
           }
           throw new Error(
             translateError(data.error || `HTTP ${response.status}`, this.language),
@@ -345,7 +374,7 @@ export function quizApp() {
       this.isHost = host;
       this.token = host ? this.hostToken : token;
       this.state = null;
-      this.view = 'room';
+      this.setView('room');
       this.error = '';
       this.message = '';
       storage.set(
@@ -364,7 +393,7 @@ export function quizApp() {
       this.navigate('/host');
       if (this.hostToken) this.run(() => this.loadHostRoute({ kind: 'host' }));
       else {
-        this.view = 'login';
+        this.setView('login');
         this.error = '';
         this.message = '';
       }
@@ -398,7 +427,7 @@ export function quizApp() {
       ]);
       this.quizzes = quizzes;
       this.games = games;
-      this.view = 'library';
+      this.setView('library');
       this.navigate('/host');
     },
     backToLibrary() {
@@ -423,7 +452,7 @@ export function quizApp() {
       // which structuredClone cannot copy.
       this.draft = JSON.parse(JSON.stringify(quiz));
       this.draftOriginal = JSON.stringify(this.draft);
-      this.view = 'editor';
+      this.setView('editor');
       this.error = '';
       this.message = '';
       this.navigate(editorPath(quiz.id), replace);
@@ -608,7 +637,7 @@ export function quizApp() {
     },
     async loadHistory(code) {
       this.historyGame = await this.request(`/games/${code}`);
-      this.view = 'history';
+      this.setView('history');
       this.navigate(gamePath(code));
     },
     historicalAnswer(player, question, q) {

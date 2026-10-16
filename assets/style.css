@@ -310,10 +310,41 @@ select {
   }
 }
 main {
+  view-transition-name: page;
   max-width: 1144px;
   margin: 0 auto;
   padding: 32px 0 65px;
   min-height: calc(100svh - 190px);
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-group(page) {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+::view-transition-old(page) {
+  animation: page-out 160ms ease-in both;
+}
+::view-transition-new(page) {
+  animation: page-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes page-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .home-grid {
   display: grid;
@@ -601,6 +632,54 @@ main {
 .import-dialog::backdrop {
   background: #17132799;
   backdrop-filter: blur(3px);
+}
+@supports (transition-behavior: allow-discrete) {
+  .settings-dialog,
+  .import-dialog {
+    opacity: 0;
+    transition:
+      opacity 200ms ease,
+      transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      display 240ms allow-discrete,
+      overlay 240ms allow-discrete;
+  }
+  .settings-dialog {
+    transform: translateX(32px);
+  }
+  .import-dialog {
+    transform: translateY(16px) scale(0.98);
+  }
+  .settings-dialog[open],
+  .import-dialog[open] {
+    opacity: 1;
+    transform: none;
+  }
+  .settings-dialog::backdrop,
+  .import-dialog::backdrop {
+    opacity: 0;
+    transition:
+      opacity 200ms ease,
+      display 240ms allow-discrete,
+      overlay 240ms allow-discrete;
+  }
+  .settings-dialog[open]::backdrop,
+  .import-dialog[open]::backdrop {
+    opacity: 1;
+  }
+  @starting-style {
+    .settings-dialog[open] {
+      opacity: 0;
+      transform: translateX(32px);
+    }
+    .import-dialog[open] {
+      opacity: 0;
+      transform: translateY(16px) scale(0.98);
+    }
+    .settings-dialog[open]::backdrop,
+    .import-dialog[open]::backdrop {
+      opacity: 0;
+    }
+  }
 }
 .dialog-heading,
 .dialog-actions {
@@ -1327,7 +1406,24 @@ main {
   }
   .quiz-card:hover {
     box-shadow: 0 16px 35px #4a288b16;
+    transform: translateY(-3px);
   }
+}
+.quiz-card,
+.choice-editor {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 200ms ease;
+}
+input,
+textarea,
+select {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    outline-color 160ms ease;
 }
 @media (min-width: 1250px) {
   main {
@@ -1580,8 +1676,18 @@ main {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation: none !important;
+    transition: none !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+  dialog::backdrop {
     transition: none !important;
   }
 }

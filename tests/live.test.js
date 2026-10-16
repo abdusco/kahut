@@ -287,6 +287,64 @@ test('quiz validation rejects invalid scoring indices and timers', () => {
   assert.equal(validQuiz(quiz), false);
 });
 
+test('view transitions keep the latest navigation and bypass motion when requested', async (t) => {
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const previousMatchMedia = Object.getOwnPropertyDescriptor(globalThis, 'matchMedia');
+  t.after(() => {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+    if (previousMatchMedia)
+      Object.defineProperty(globalThis, 'matchMedia', previousMatchMedia);
+    else delete globalThis.matchMedia;
+  });
+  const transitions = [];
+  let reducedMotion = false;
+  globalThis.matchMedia = () => ({ matches: reducedMotion });
+  globalThis.document = {
+    hidden: false,
+    startViewTransition(update) {
+      const transition = {
+        update,
+        skipped: false,
+        ready: Promise.resolve(),
+        skipTransition() {
+          this.skipped = true;
+        },
+      };
+      transitions.push(transition);
+      return transition;
+    },
+  };
+  const ui = quizApp();
+  let renders = 0;
+  ui.$nextTick = async () => renders++;
+  ui.setView('login');
+  ui.setView('editor');
+  assert.equal(transitions[0].skipped, true);
+  await transitions[1].update();
+  await transitions[0].update();
+  assert.equal(ui.view, 'editor');
+  assert.equal(renders, 1);
+
+  ui.setView('history');
+  reducedMotion = true;
+  ui.setView('home');
+  await transitions[2].update();
+  assert.equal(ui.view, 'home');
+  assert.equal(transitions.length, 3);
+
+  reducedMotion = false;
+  document.hidden = true;
+  ui.setView('room');
+  assert.equal(ui.view, 'room');
+  assert.equal(transitions.length, 3);
+
+  document.hidden = false;
+  delete document.startViewTransition;
+  ui.setView('library');
+  assert.equal(ui.view, 'library');
+});
+
 test('new questions start with two choices and preserve the correct answer when removing extras', () => {
   const ui = quizApp();
   ui.newQuiz();
