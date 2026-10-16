@@ -120,6 +120,18 @@ select:focus {
   outline: 3px solid #9276ef55;
   border-color: var(--primary);
 }
+.field-errors {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--red);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+input.invalid,
+textarea.invalid {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px #df375840;
+}
 button:focus-visible,
 a:focus-visible {
   outline: 3px solid var(--primary);

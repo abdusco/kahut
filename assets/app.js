@@ -36,34 +36,56 @@ const storage = {
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
-export function validQuiz(quiz) {
-  return (
-    quiz?.version === 1 &&
-    typeof quiz.title === 'string' &&
-    quiz.title.trim().length > 0 &&
-    [...quiz.title.trim()].length <= 120 &&
-    Array.isArray(quiz.questions) &&
-    quiz.questions.length >= 1 &&
-    quiz.questions.length <= 100 &&
-    quiz.questions.every(
-      (q) =>
-        typeof q.text === 'string' &&
-        q.text.trim() &&
-        [...q.text.trim()].length <= 1000 &&
-        Array.isArray(q.choices) &&
-        q.choices.length >= 2 &&
-        q.choices.length <= 4 &&
-        q.choices.every(
-          (c) => typeof c === 'string' && c.trim() && [...c.trim()].length <= 300,
-        ) &&
-        Number.isInteger(q.correctIndex) &&
-        q.correctIndex >= 0 &&
-        q.correctIndex < q.choices.length &&
-        Number.isInteger(q.timeLimitSeconds) &&
-        q.timeLimitSeconds >= 5 &&
-        q.timeLimitSeconds <= 120,
+const textLength = (value) => [...value.trim()].length;
+
+// Lists every problem as {key, q, c, code}. `key` identifies the input to highlight:
+// 'title', 'questions', 'q<i>.text', 'q<i>.c<j>', 'q<i>.choices', 'q<i>.correct', 'q<i>.timer'.
+export function quizProblems(quiz) {
+  const problems = [];
+  const add = (key, code, q, c) => problems.push({ key, code, q, c });
+  if (
+    typeof quiz?.title !== 'string' ||
+    !textLength(quiz.title) ||
+    textLength(quiz.title) > 120
+  )
+    add('title', 'problemTitle');
+  if (
+    !Array.isArray(quiz?.questions) ||
+    quiz.questions.length < 1 ||
+    quiz.questions.length > 100
+  ) {
+    add('questions', 'problemCount');
+    return problems;
+  }
+  quiz.questions.forEach((q, i) => {
+    if (typeof q.text !== 'string' || !textLength(q.text) || textLength(q.text) > 1000)
+      add(`q${i}.text`, 'problemText', i);
+    if (!Array.isArray(q.choices) || q.choices.length < 2 || q.choices.length > 4) {
+      add(`q${i}.choices`, 'problemChoices', i);
+      return;
+    }
+    q.choices.forEach((choice, j) => {
+      if (typeof choice !== 'string' || !textLength(choice) || textLength(choice) > 300)
+        add(`q${i}.c${j}`, 'problemChoice', i, j);
+    });
+    if (
+      !Number.isInteger(q.correctIndex) ||
+      q.correctIndex < 0 ||
+      q.correctIndex >= q.choices.length
     )
-  );
+      add(`q${i}.correct`, 'problemCorrect', i);
+    if (
+      !Number.isInteger(q.timeLimitSeconds) ||
+      q.timeLimitSeconds < 5 ||
+      q.timeLimitSeconds > 120
+    )
+      add(`q${i}.timer`, 'problemTimer', i);
+  });
+  return problems;
+}
+
+export function validQuiz(quiz) {
+  return quiz?.version === 1 && quizProblems(quiz).length === 0;
 }
 
 export function quizApp() {
@@ -98,6 +120,7 @@ export function quizApp() {
     quizzes: [],
     games: [],
     draft: null,
+    showProblems: false,
     draftOriginal: '',
     historyGame: null,
     savedRoom: storage.saved()?.room || '',
@@ -463,6 +486,7 @@ export function quizApp() {
     setDraft(quiz, replace = false) {
       // Quiz documents are JSON. Serialization also unwraps Alpine's proxies,
       // which structuredClone cannot copy.
+      this.showProblems = false;
       this.draft = JSON.parse(JSON.stringify(quiz));
       this.draftOriginal = JSON.stringify(this.draft);
       this.setView('editor');
@@ -552,9 +576,38 @@ export function quizApp() {
       if (q.correctIndex === index) q.correctIndex = 0;
       else if (q.correctIndex > index) q.correctIndex--;
     },
+    // Highlighting turns on at the first failed save and updates live while editing.
+    bad(key) {
+      return this.showProblems && quizProblems(this.draft).some((p) => p.key === key);
+    },
+    problemText(problem) {
+      const what = this.t(problem.code);
+      return problem.c === undefined
+        ? what
+        : `${this.t('choice')} ${problem.c + 1} ${what}`;
+    },
+    // Messages shown under the title (q undefined) or under question `q`.
+    problemsFor(q) {
+      if (!this.showProblems || !this.draft) return [];
+      return quizProblems(this.draft)
+        .filter((p) => p.q === q)
+        .map((p) => this.problemText(p));
+    },
+    focusProblem(key) {
+      this.$nextTick(() => {
+        const el = document.querySelector(`[data-problem="${key}"]`);
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el?.focus({ preventScroll: true });
+      });
+    },
     saveQuiz() {
       return this.run(async () => {
-        if (!validQuiz(this.draft)) throw new Error(this.t('invalidQuiz'));
+        this.showProblems = true;
+        const problems = quizProblems(this.draft);
+        if (problems.length) {
+          this.focusProblem(problems[0].key);
+          throw new Error(this.t('problemsFound'));
+        }
         await this.request(this.draft.id ? `/quizzes/${this.draft.id}` : '/quizzes', {
           method: this.draft.id ? 'PUT' : 'POST',
           body: this.draft,

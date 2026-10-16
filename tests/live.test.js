@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LiveConnection } from '../assets/live.js';
 import { resolveRoute, roomPath, editorPath, gamePath } from '../assets/routes.js';
-import { validQuiz, quizApp, quizPrompt } from '../assets/app.js';
+import { validQuiz, quizProblems, quizApp, quizPrompt } from '../assets/app.js';
 import { messages } from '../assets/i18n.js';
 
 function harness() {
@@ -285,6 +285,21 @@ test('quiz validation rejects invalid scoring indices and timers', () => {
   quiz.questions[0].correctIndex = 0;
   quiz.questions[0].timeLimitSeconds = 4;
   assert.equal(validQuiz(quiz), false);
+});
+
+test('quizProblems names each bad field', () => {
+  const quiz = {
+    version: 1,
+    title: ' ',
+    questions: [
+      { text: 'Ok?', choices: ['A', 'B'], correctIndex: 0, timeLimitSeconds: 20 },
+      { text: '', choices: ['A', ''], correctIndex: 0, timeLimitSeconds: 3 },
+    ],
+  };
+  assert.deepEqual(
+    quizProblems(quiz).map((p) => p.key),
+    ['title', 'q1.text', 'q1.c1', 'q1.timer'],
+  );
 });
 
 test('view transitions keep the latest navigation and bypass motion when requested', async (t) => {

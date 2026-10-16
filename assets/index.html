@@ -283,10 +283,16 @@
               <label for="quiz-title" x-text="t('quizTitle')"></label
               ><input
                 id="quiz-title"
+                data-problem="title"
+                :class="{invalid: bad('title')}"
+                :aria-invalid="bad('title')"
                 x-model="draft.title"
                 maxlength="120"
                 :placeholder="t('quizTitleHint')"
               />
+              <ul class="field-errors" x-show="problemsFor().length">
+                <template x-for="msg in problemsFor()"><li x-text="msg"></li></template>
+              </ul>
             </div>
             <template x-for="(q,i) in draft.questions" :key="i"
               ><article
@@ -325,6 +331,9 @@
                 <label :for="'question-'+i" x-text="t('questionText')"></label
                 ><textarea
                   :id="'question-'+i"
+                  :data-problem="'q'+i+'.text'"
+                  :class="{invalid: bad('q'+i+'.text')}"
+                  :aria-invalid="bad('q'+i+'.text')"
                   x-model="q.text"
                   maxlength="1000"
                   rows="2"
@@ -376,6 +385,9 @@
                         :aria-label="t('correctAnswer')+' '+(j+1)"
                       /><input
                         type="text"
+                        :data-problem="'q'+i+'.c'+j"
+                        :class="{invalid: bad('q'+i+'.c'+j)}"
+                        :aria-invalid="bad('q'+i+'.c'+j)"
                         x-model="q.choices[j]"
                         maxlength="300"
                         :aria-label="t('choice')+' '+(j+1)"
@@ -403,9 +415,17 @@
                       type="number"
                       min="5"
                       max="120"
+                      :data-problem="'q'+i+'.timer'"
+                      :class="{invalid: bad('q'+i+'.timer')}"
+                      :aria-invalid="bad('q'+i+'.timer')"
                       x-model.number="q.timeLimitSeconds"
                   /></label>
-                </div></article
+                </div>
+                <ul class="field-errors" x-show="problemsFor(i).length" role="alert">
+                  <template x-for="msg in problemsFor(i)"
+                    ><li x-text="msg"></li
+                  ></template>
+                </ul></article
             ></template>
             <div class="row">
               <button
