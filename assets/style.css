@@ -590,6 +590,8 @@ main > section[hidden] {
 }
 .lobby-actions .danger {
   flex: 0 0 auto;
+  /* Match the primary button's 4px lip so both bottom edges line up. */
+  box-shadow: 0 4px 0 color-mix(in srgb, #ca4656 45%, var(--line));
 }
 .wide.quiet,
 .wide.outline {
