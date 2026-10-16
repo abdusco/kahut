@@ -1,5 +1,3 @@
-# Generate a signing key once and reuse it across restarts:
-#   python3 -c "import secrets; print(secrets.token_hex(32))"
 services:
   kahut:
     build: .
@@ -7,6 +5,8 @@ services:
       - '${HOST_PORT:-8080}:8080'
     environment:
       AUTH_USERS: '${AUTH_USERS:?Set AUTH_USERS to a JSON array of username:password strings}'
+      # Generate once and reuse across restarts:
+      #   python3 -c "import secrets; print(secrets.token_hex(32))"
       SESSION_SIGNING_KEY: '${SESSION_SIGNING_KEY:?Set a stable random signing key of at least 32 bytes}'
       DB_PATH: /data/kahut.db
       OPENROUTER_API_KEY: '${OPENROUTER_API_KEY:-}'
