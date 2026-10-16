@@ -370,19 +370,22 @@
                       max="120"
                       x-model.number="q.timeLimitSeconds"
                   /></label>
-                </div></article></template
-            ><button
-              class="outline wide"
-              :disabled="draft.questions.length>=100"
-              @click="draft.questions.push(blankQuestion())"
-              x-text="t('addQuestion')"
-            ></button>
-            <button
-              class="primary wide"
-              :disabled="busy || !online"
-              @click="saveQuiz()"
-              x-text="t('saveQuiz')"
-            ></button></div
+                </div></article
+            ></template>
+            <div class="row">
+              <button
+                class="outline"
+                :disabled="draft.questions.length>=100"
+                @click="draft.questions.push(blankQuestion())"
+                x-text="t('addQuestion')"
+              ></button>
+              <button
+                class="primary"
+                :disabled="busy || !online"
+                @click="saveQuiz()"
+                x-text="t('saveQuiz')"
+              ></button>
+            </div></div
         ></template>
       </section>
 
