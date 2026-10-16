@@ -195,14 +195,6 @@ select {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-.select-control select {
-  appearance: none;
-  border: 0;
-  background: var(--soft);
-  border-radius: 10px;
-  padding: 10px 32px 10px 12px;
-  cursor: pointer;
-}
 .menu-toggle {
   background: var(--soft);
   color: var(--ink);
@@ -243,31 +235,79 @@ select {
 .settings-content {
   min-height: 100%;
 }
-.settings-dialog .select-control select {
+.settings-dialog select {
   width: 100%;
   min-height: 54px;
   font-size: 1rem;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
 }
 .settings-dialog label {
   margin-top: 26px;
 }
-.select-control {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.select-control > svg {
-  position: absolute;
-  right: 11px;
-  width: 13px;
-  height: 13px;
-  pointer-events: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  color: var(--muted);
+/* Native customizable selects; other browsers retain their standard picker.
+   https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms/Customizable_select */
+@supports (appearance: base-select) {
+  .settings-dialog select,
+  .settings-dialog select::picker(select) {
+    appearance: base-select;
+  }
+  .settings-dialog select {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .settings-dialog select::picker(select) {
+    margin-top: 8px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--panel);
+    color: var(--ink);
+    box-shadow: 0 12px 30px #24184226;
+  }
+  .settings-dialog select::picker-icon {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    color: var(--muted);
+    margin-inline: auto 3px;
+    rotate: 45deg;
+    transition: rotate 0.18s;
+  }
+  .settings-dialog select:open::picker-icon {
+    rotate: 225deg;
+  }
+  .settings-dialog option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--panel);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .settings-dialog option:hover,
+  .settings-dialog option:focus,
+  .settings-dialog option:checked {
+    background: var(--soft);
+    color: var(--primary);
+  }
+  .settings-dialog option:checked {
+    font-weight: 700;
+  }
+  .settings-dialog option::checkmark {
+    content: '✓';
+    order: 1;
+    margin-inline-start: auto;
+    color: var(--primary);
+  }
 }
 main {
   max-width: 1144px;
@@ -416,20 +456,6 @@ main {
   font-size: 2rem;
   color: #daff79;
   align-self: start;
-}
-.hero-notes {
-  display: flex;
-  gap: 10px;
-  font-size: 0.73rem;
-  font-weight: 700;
-  color: #eee5ff;
-  margin-top: 23px;
-  flex-wrap: wrap;
-}
-.hero-notes > span {
-  padding: 7px 10px;
-  border: 1px solid #ffffff24;
-  border-radius: 30px;
 }
 .panel {
   background: var(--panel);
@@ -1335,9 +1361,6 @@ main {
     flex: 0 1 65px;
     font-size: 1.5rem;
   }
-  .hero-notes {
-    margin-top: 12px;
-  }
   .join-stack {
     max-width: 550px;
     width: 100%;
@@ -1393,10 +1416,6 @@ main {
   .site-header .small {
     padding: 6px;
   }
-  .hero-notes {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
   .lobby-grid .invitation {
     max-width: none;
   }
@@ -1414,11 +1433,6 @@ main {
     width: 38px;
     height: 32px;
   }
-  .select-control > svg {
-    right: 9px;
-    width: 11px;
-    height: 11px;
-  }
   main {
     margin: 0 16px;
   }
@@ -1435,9 +1449,6 @@ main {
   .hero-badge {
     font-size: 0.6rem;
     padding: 8px 10px;
-  }
-  .hero-notes {
-    font-size: 0.65rem;
   }
   .hero-copy {
     font-size: 1rem;

@@ -5,8 +5,6 @@ export const messages = {
     heroTwo: 'Bigger energy.',
     heroCopy:
       'Gather your people. Pick your answers. Turn a little knowledge into a lot of fun.',
-    noAccount: 'No account. Just a nickname.',
-    livePlay: 'Real time. Real competition.',
     letsPlay: 'Let’s play',
     joinGame: 'Join a game',
     joinCopy: 'Got a code? Your next challenge is right here.',
@@ -152,8 +150,6 @@ export const messages = {
     heroTwo: 'Daha büyük heyecan.',
     heroCopy:
       'Arkadaşlarını topla. Cevabını seç. Biraz bilgiyi bolca eğlenceye dönüştür.',
-    noAccount: 'Hesap yok. Sadece bir takma ad.',
-    livePlay: 'Anlık oyun. Gerçek rekabet.',
     letsPlay: 'Hadi oynayalım',
     joinGame: 'Oyuna katıl',
     joinCopy: 'Oda kodun hazır mı? Sıradaki meydan okuma burada.',
