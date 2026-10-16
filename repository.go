@@ -75,13 +75,14 @@ func openRepository(path, signingKey string) (*Repository, error) {
 	return repo, nil
 }
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 // migrations[i] upgrades the schema from version i+1 to i+2. A new database
 // starts at version 0 and runs the first migration, which creates version 2.
 var migrations = []func(tx *sql.Tx) error{
 	migrateToV2,
 	migrateToV3,
+	migrateToV4,
 }
 
 func migrate(db *sql.DB, version int) error {
@@ -175,6 +176,139 @@ CREATE TABLE choices (
 	return nil
 }
 
+// migrateToV4 replaces the room and answer JSON documents with relational
+// tables. Rooms keep their own copy of the quiz questions so later quiz edits
+// do not change running or finished games.
+func migrateToV4(tx *sql.Tx) error {
+	rows, err := tx.Query("SELECT owner,document FROM rooms ORDER BY rowid")
+	if err != nil {
+		return err
+	}
+	var rooms []Room
+	for rows.Next() {
+		var document []byte
+		var r Room
+		if err = rows.Scan(&r.Owner, &document); err == nil {
+			err = json.Unmarshal(document, &r)
+		}
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		rooms = append(rooms, r)
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	_, err = tx.Exec(`
+DROP TABLE answers;
+DROP TABLE rooms;
+CREATE TABLE rooms (
+	code TEXT PRIMARY KEY,
+	owner TEXT NOT NULL,
+	quiz_id TEXT NOT NULL,
+	quiz_version INTEGER NOT NULL,
+	quiz_title TEXT NOT NULL,
+	phase TEXT NOT NULL,
+	question INTEGER NOT NULL,
+	revision INTEGER NOT NULL,
+	sequence INTEGER NOT NULL,
+	started_at INTEGER NOT NULL,
+	deadline INTEGER NOT NULL,
+	created_at INTEGER NOT NULL
+);
+CREATE TABLE room_questions (
+	room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+	position INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	correct_index INTEGER NOT NULL,
+	time_limit_seconds INTEGER NOT NULL,
+	PRIMARY KEY(room_code, position)
+);
+CREATE TABLE room_choices (
+	room_code TEXT NOT NULL,
+	question_position INTEGER NOT NULL,
+	position INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	PRIMARY KEY(room_code, question_position, position),
+	FOREIGN KEY(room_code, question_position) REFERENCES room_questions(room_code, position) ON DELETE CASCADE
+);
+CREATE TABLE players (
+	room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+	id TEXT NOT NULL,
+	position INTEGER NOT NULL,
+	name TEXT NOT NULL,
+	score INTEGER NOT NULL,
+	from_question INTEGER NOT NULL,
+	PRIMARY KEY(room_code, id)
+);
+CREATE TABLE answers (
+	room_code TEXT NOT NULL,
+	player_id TEXT NOT NULL,
+	question INTEGER NOT NULL,
+	choice INTEGER NOT NULL,
+	points INTEGER NOT NULL,
+	received_at INTEGER NOT NULL,
+	PRIMARY KEY(room_code, player_id, question),
+	FOREIGN KEY(room_code, player_id) REFERENCES players(room_code, id) ON DELETE CASCADE
+);`)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	for _, r := range rooms {
+		if err = insertRoom(ctx, tx, r); err != nil {
+			return err
+		}
+		if err = upsertPlayers(ctx, tx, r); err != nil {
+			return err
+		}
+		for _, a := range r.Answers {
+			if err = insertAnswer(ctx, tx, r.Code, a); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func insertRoom(ctx context.Context, tx *sql.Tx, r Room) error {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO rooms(code,owner,quiz_id,quiz_version,quiz_title,phase,question,revision,sequence,started_at,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+		r.Code, r.Owner, r.Quiz.ID, r.Quiz.Version, r.Quiz.Title, r.Phase, r.Question, r.Revision, r.Sequence, r.StartedAt, r.Deadline, r.CreatedAt); err != nil {
+		return err
+	}
+	return insertRoomQuestions(ctx, tx, r)
+}
+
+func insertRoomQuestions(ctx context.Context, tx *sql.Tx, r Room) error {
+	for i, p := range r.Quiz.Questions {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO room_questions(room_code,position,text,correct_index,time_limit_seconds) VALUES(?,?,?,?,?)", r.Code, i, p.Text, p.CorrectIndex, p.TimeLimitSeconds); err != nil {
+			return err
+		}
+		for j, c := range p.Choices {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO room_choices(room_code,question_position,position,text) VALUES(?,?,?,?)", r.Code, i, j, c); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func upsertPlayers(ctx context.Context, tx *sql.Tx, r Room) error {
+	for i, p := range r.Players {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO players(room_code,id,position,name,score,from_question) VALUES(?,?,?,?,?,?) ON CONFLICT(room_code,id) DO UPDATE SET name=excluded.name, score=excluded.score, from_question=excluded.from_question", r.Code, p.ID, i, p.Name, p.Score, p.FromQuestion); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertAnswer(ctx context.Context, tx *sql.Tx, room string, a Answer) error {
+	_, err := tx.ExecContext(ctx, "INSERT INTO answers(room_code,player_id,question,choice,points,received_at) VALUES(?,?,?,?,?,?)", room, a.PlayerID, a.Question, a.Choice, a.Points, a.ReceivedAt)
+	return err
+}
+
 func insertQuestions(ctx context.Context, tx *sql.Tx, q Quiz) error {
 	for i, p := range q.Questions {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO questions(quiz_id,position,text,correct_index,time_limit_seconds) VALUES(?,?,?,?,?)", q.ID, i, p.Text, p.CorrectIndex, p.TimeLimitSeconds); err != nil {
@@ -221,11 +355,7 @@ func (repo *Repository) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Roo
 		return err
 	}
 	for _, room := range renamedRooms {
-		document, err := json.Marshal(room)
-		if err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, "UPDATE rooms SET document=? WHERE code=?", document, room.Code); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE rooms SET quiz_title=? WHERE code=?", room.Quiz.Title, room.Code); err != nil {
 			return err
 		}
 	}
@@ -329,26 +459,37 @@ func (repo *Repository) DeleteQuiz(ctx context.Context, id, owner string) error 
 	return nil
 }
 
+// SaveRoom stores the room state, its players and the optional new answer.
+// The quiz questions are copied once, when the room is first saved.
 func (repo *Repository) SaveRoom(ctx context.Context, r Room, a *Answer) error {
-	b, err := json.Marshal(r)
-	if err != nil {
-		return err
-	}
 	tx, err := repo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, "INSERT INTO rooms(code,owner,document) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET document=excluded.document", r.Code, r.Owner, b)
+	result, err := tx.ExecContext(ctx, "INSERT INTO rooms(code,owner,quiz_id,quiz_version,quiz_title,phase,question,revision,sequence,started_at,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(code) DO NOTHING",
+		r.Code, r.Owner, r.Quiz.ID, r.Quiz.Version, r.Quiz.Title, r.Phase, r.Question, r.Revision, r.Sequence, r.StartedAt, r.Deadline, r.CreatedAt)
 	if err != nil {
 		return err
 	}
-	if a != nil {
-		ab, err := json.Marshal(a)
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if inserted == 0 {
+		_, err = tx.ExecContext(ctx, "UPDATE rooms SET quiz_title=?,phase=?,question=?,revision=?,sequence=?,started_at=?,deadline=? WHERE code=?",
+			r.Quiz.Title, r.Phase, r.Question, r.Revision, r.Sequence, r.StartedAt, r.Deadline, r.Code)
 		if err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, "INSERT INTO answers(room_code,player_id,question,document) VALUES(?,?,?,?)", r.Code, a.PlayerID, a.Question, ab); err != nil {
+	} else if err = insertRoomQuestions(ctx, tx, r); err != nil {
+		return err
+	}
+	if err = upsertPlayers(ctx, tx, r); err != nil {
+		return err
+	}
+	if a != nil {
+		if err = insertAnswer(ctx, tx, r.Code, *a); err != nil {
 			return err
 		}
 	}
@@ -356,24 +497,99 @@ func (repo *Repository) SaveRoom(ctx context.Context, r Room, a *Answer) error {
 }
 
 func (repo *Repository) Rooms(ctx context.Context) ([]Room, error) {
-	rows, err := repo.db.QueryContext(ctx, "SELECT owner,document FROM rooms ORDER BY rowid DESC")
+	out := []Room{}
+	byCode := map[string]int{}
+	rows, err := repo.db.QueryContext(ctx, "SELECT code,owner,quiz_id,quiz_version,quiz_title,phase,question,revision,sequence,started_at,deadline,created_at FROM rooms ORDER BY rowid DESC")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []Room{}
 	for rows.Next() {
-		var b []byte
-		var r Room
-		if err = rows.Scan(&r.Owner, &b); err != nil {
+		r := Room{Players: []Player{}, Answers: []Answer{}}
+		r.Quiz.Questions = []Question{}
+		if err = rows.Scan(&r.Code, &r.Owner, &r.Quiz.ID, &r.Quiz.Version, &r.Quiz.Title, &r.Phase, &r.Question, &r.Revision, &r.Sequence, &r.StartedAt, &r.Deadline, &r.CreatedAt); err != nil {
 			return nil, err
 		}
-		if err = json.Unmarshal(b, &r); err != nil {
-			return nil, err
-		}
+		byCode[r.Code] = len(out)
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	questions, err := repo.db.QueryContext(ctx, "SELECT room_code,text,correct_index,time_limit_seconds FROM room_questions ORDER BY room_code,position")
+	if err != nil {
+		return nil, err
+	}
+	defer questions.Close()
+	for questions.Next() {
+		var code string
+		p := Question{Choices: []string{}}
+		if err = questions.Scan(&code, &p.Text, &p.CorrectIndex, &p.TimeLimitSeconds); err != nil {
+			return nil, err
+		}
+		r := &out[byCode[code]]
+		r.Quiz.Questions = append(r.Quiz.Questions, p)
+	}
+	if err = questions.Err(); err != nil {
+		return nil, err
+	}
+	questions.Close()
+
+	choices, err := repo.db.QueryContext(ctx, "SELECT room_code,question_position,text FROM room_choices ORDER BY room_code,question_position,position")
+	if err != nil {
+		return nil, err
+	}
+	defer choices.Close()
+	for choices.Next() {
+		var code, text string
+		var position int
+		if err = choices.Scan(&code, &position, &text); err != nil {
+			return nil, err
+		}
+		p := &out[byCode[code]].Quiz.Questions[position]
+		p.Choices = append(p.Choices, text)
+	}
+	if err = choices.Err(); err != nil {
+		return nil, err
+	}
+	choices.Close()
+
+	players, err := repo.db.QueryContext(ctx, "SELECT room_code,id,name,score,from_question FROM players ORDER BY room_code,position")
+	if err != nil {
+		return nil, err
+	}
+	defer players.Close()
+	for players.Next() {
+		var code string
+		var p Player
+		if err = players.Scan(&code, &p.ID, &p.Name, &p.Score, &p.FromQuestion); err != nil {
+			return nil, err
+		}
+		r := &out[byCode[code]]
+		r.Players = append(r.Players, p)
+	}
+	if err = players.Err(); err != nil {
+		return nil, err
+	}
+	players.Close()
+
+	answers, err := repo.db.QueryContext(ctx, "SELECT room_code,player_id,question,choice,points,received_at FROM answers ORDER BY rowid")
+	if err != nil {
+		return nil, err
+	}
+	defer answers.Close()
+	for answers.Next() {
+		var code string
+		var a Answer
+		if err = answers.Scan(&code, &a.PlayerID, &a.Question, &a.Choice, &a.Points, &a.ReceivedAt); err != nil {
+			return nil, err
+		}
+		r := &out[byCode[code]]
+		r.Answers = append(r.Answers, a)
+	}
+	return out, answers.Err()
 }
 
 type Session struct {

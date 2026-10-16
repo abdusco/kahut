@@ -494,3 +494,56 @@ func TestMigrateQuizDocumentsToTables(t *testing.T) {
 		t.Fatalf("expected cascade delete, got %d rows, %v", n, err)
 	}
 }
+
+func TestMigrateRoomDocumentsToTables(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "v2.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = migrateToV2(tx); err != nil {
+		t.Fatal(err)
+	}
+	document := `{"code":"ROOM1","quiz":{"id":"a","version":1,"title":"Old title","questions":[{"text":"Q1","choices":["x","y"],"correctIndex":1,"timeLimitSeconds":30}]},` +
+		`"phase":"results","question":0,"revision":4,"sequence":7,"startedAt":10,"deadline":40,"createdAt":5,` +
+		`"players":[{"id":"p2","name":"Zed","score":0,"fromQuestion":0},{"id":"p1","name":"Amy","score":900,"fromQuestion":0}],` +
+		`"answers":[{"playerId":"p1","question":0,"choice":1,"points":900,"receivedAt":20}]}`
+	if _, err = tx.Exec("INSERT INTO rooms(code,owner,document) VALUES('ROOM1','alice',?)", document); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec("PRAGMA user_version=2"); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	repo, err := openRepository(path, "test-signing-key-at-least-32-bytes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+	rooms, err := repo.Rooms(ctx)
+	if err != nil || len(rooms) != 1 {
+		t.Fatalf("unexpected rooms: %+v, %v", rooms, err)
+	}
+	r := rooms[0]
+	if r.Owner != "alice" || r.Code != "ROOM1" || r.Quiz.Title != "Old title" || r.Phase != "results" || r.Revision != 4 || r.Sequence != 7 || r.Deadline != 40 || r.CreatedAt != 5 {
+		t.Fatalf("unexpected room: %+v", r)
+	}
+	if len(r.Quiz.Questions) != 1 || strings.Join(r.Quiz.Questions[0].Choices, ",") != "x,y" || r.Quiz.Questions[0].CorrectIndex != 1 {
+		t.Fatalf("unexpected questions: %+v", r.Quiz.Questions)
+	}
+	if len(r.Players) != 2 || r.Players[0].ID != "p2" || r.Players[1].Score != 900 {
+		t.Fatalf("player order or scores lost: %+v", r.Players)
+	}
+	if len(r.Answers) != 1 || r.Answers[0].Points != 900 || r.Answers[0].ReceivedAt != 20 {
+		t.Fatalf("unexpected answers: %+v", r.Answers)
+	}
+}
