@@ -376,6 +376,12 @@
               :disabled="draft.questions.length>=100"
               @click="draft.questions.push(blankQuestion())"
               x-text="t('addQuestion')"
+            ></button>
+            <button
+              class="primary wide"
+              :disabled="busy || !online"
+              @click="saveQuiz()"
+              x-text="t('saveQuiz')"
             ></button></div
         ></template>
       </section>
