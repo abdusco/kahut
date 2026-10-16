@@ -283,6 +283,9 @@ func (r Room) Snapshot(player string, host bool, online map[string]int, now int6
 	if r.Phase != "lobby" {
 		q := r.Quiz.Questions[r.Question]
 		view := map[string]any{"text": q.Text, "choices": q.Choices, "timeLimitSeconds": q.TimeLimitSeconds}
+		if q.ImageID != "" {
+			view["imageId"] = q.ImageID
+		}
 		if r.Phase != "question" {
 			view["correctIndex"] = q.CorrectIndex
 			counts := make([]int, len(q.Choices))

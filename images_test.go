@@ -140,3 +140,16 @@ func mustJSON(v any) []byte {
 	}
 	return b
 }
+
+func TestSnapshotIncludesQuestionImage(t *testing.T) {
+	room := Room{Code: "ROOM1", Quiz: testQuiz(), Phase: "question"}
+	room.Quiz.Questions[0].ImageID = "abc123"
+	view := room.Snapshot("", true, nil, 0)["question"].(map[string]any)
+	if view["imageId"] != "abc123" {
+		t.Fatalf("snapshot question lacks image: %+v", view)
+	}
+	room.Question = 1
+	if _, ok := room.Snapshot("", true, nil, 0)["question"].(map[string]any)["imageId"]; ok {
+		t.Fatal("question without an image has an image ID")
+	}
+}

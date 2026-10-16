@@ -541,6 +541,12 @@
                   x-text="!isHost && state.myPoints>0 ? '✓' : '✦'"
                 ></div>
                 <h2 x-text="state.question?.text"></h2>
+                <img
+                  class="question-image"
+                  x-show="state.question?.imageId"
+                  :src="state.question?.imageId ? imageUrl(state.question.imageId) : ''"
+                  :alt="t('questionImage')"
+                />
                 <p
                   class="answer-status"
                   role="status"
@@ -717,6 +723,12 @@
                   ><span x-text="t('question')"></span> <span x-text="i+1"></span
                 ></span>
                 <h2 x-text="q.text"></h2>
+                <img
+                  class="question-image"
+                  x-show="q.imageId"
+                  :src="q.imageId ? imageUrl(q.imageId) : ''"
+                  :alt="t('questionImage')"
+                />
                 <p>
                   <span x-text="t('correctAnswer')"></span>:
                   <strong x-text="q.choices[q.correctIndex]"></strong>

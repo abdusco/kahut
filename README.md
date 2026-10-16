@@ -1,6 +1,6 @@
 # kahut
 
-A self-hosted, real-time quiz game. Hosts create quizzes or import JSON, invite players by room code or QR, and run timed questions with speed-based scoring and a live leaderboard. Players need only a nickname. SQLite preserves quizzes, answers, results, and active games across restarts.
+A self-hosted, real-time quiz game. Hosts create quizzes or import JSON, invite players by room code or QR, and run timed questions with speed-based scoring and a live leaderboard. Players need only a nickname. SQLite preserves quizzes, question images, answers, results, and active games across restarts.
 
 ## Run
 
@@ -21,13 +21,19 @@ Renaming a quiz updates its live and saved game titles, including games created 
 
 `SESSION_SIGNING_KEY` is required and must contain at least 32 bytes. Generate a random value once, then save it in your server environment and reuse it across restarts. It is never stored in SQLite. Changing it invalidates existing host and player sessions.
 
-Configuration: `PORT` (default `8080`), `ADDR` (used when `PORT` is unset), `DB_PATH` (default `./data/kahut.db`), and `DEBUG=1` to serve assets from disk. Keep the database directory persistent and private; it contains game data and session records. Multi-user support uses a fresh schema; point `DB_PATH` at a new database if you used the earlier single-host prototype.
+Configuration: `PORT` (default `8080`), `ADDR` (used when `PORT` is unset), `DB_PATH` (default `./data/kahut.db`), and `DEBUG=1` to serve assets from disk. Keep the database directory persistent and private; it contains game data and session records. The schema is versioned (`PRAGMA user_version`) and upgrades automatically on startup; quizzes and games stored as JSON documents are converted to tables. Databases from the earlier single-host prototype are not supported; point `DB_PATH` at a new database. Back up the database file before upgrading.
 
 API requests support all origins, including `Authorization`/JSON preflights, and authenticated WebSocket connections accept tunnel origins even when the proxy rewrites `Host`. Start the app locally, then point cloudflared or ngrok at `http://localhost:8080` and open the public HTTPS URL. Invitations and live connections use that public origin automatically. Authentication requires a configured account or a player session token; cookie-based credentials are not used.
 
 Questions have 2–4 choices, one correct answer, and a 5–120 second timer. Correct answers earn 500–1,000 points based on server receipt time; wrong or missing answers earn zero. Players first see answer feedback; the host’s **Show leaderboard** action switches everyone to a dedicated ranking screen, and **Next question** returns them to the quiz. Late joiners wait for the next question. Interrupted questions retain their original deadlines.
 
 The app supports English/Turkish, light/dark/system themes, and installation as a PWA. Language and appearance controls live in the Settings side menu. The offline shell opens without a network, but gameplay and quiz editing require the server. A root visit opens home; room paths and installed launches through `/resume` can restore a saved session. Previously shared query-based invitations still work and are converted to path URLs.
+
+## Question images
+
+Each question can have one image. In the quiz editor, choose **Add image**, drop a file on the question, or paste an image while its text box is focused. PNG, JPEG, GIF, and WebP up to 4 MB are accepted; SVG is not. Images are stored as blobs in the SQLite database and shown to the host and players during the question and in game results. Games keep their images when the quiz is edited or deleted. Images no quiz or game uses are removed 24 hours after upload.
+
+`GET /api/images/{id}` is public because `<img>` requests cannot send the `Authorization` header. Image IDs are random and unguessable, but anyone with a link can view the image. Do not upload sensitive images. Quiz JSON export omits images, because image IDs only work on the server and account that uploaded them.
 
 ## Quiz JSON
 

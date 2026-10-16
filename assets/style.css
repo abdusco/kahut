@@ -908,6 +908,14 @@ main > section[hidden] {
   border-radius: 12px;
   border: 1px solid var(--line);
 }
+.question-image {
+  display: block;
+  max-width: 100%;
+  max-height: 40vh;
+  margin: 12px auto;
+  object-fit: contain;
+  border-radius: 12px;
+}
 .choice-editor-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
