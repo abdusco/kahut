@@ -1,6 +1,6 @@
 // Existing tabs keep their current worker until they close. This prevents a new
 // worker from serving a different shell version beneath an already-running app.
-const CACHE = 'kahut-shell-v33';
+const CACHE = 'kahut-shell-v34';
 const SHELL = [
   '/',
   '/style.css',
@@ -9,6 +9,7 @@ const SHELL = [
   '/live.js',
   '/routes.js',
   '/i18n.js',
+  '/vendor/alpine-persist-3.15.0.js',
   '/vendor/alpine-3.15.0.js',
   '/vendor/qrcode-1.4.4.js',
   '/manifest.webmanifest',

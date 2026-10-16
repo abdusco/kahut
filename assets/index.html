@@ -437,8 +437,9 @@
             <div class="row">
               <button
                 class="outline"
-                :disabled="draft.questions.length>=100"
-                @click="draft.questions.push(blankQuestion())"
+                :disabled="!canAddQuestion()"
+                :title="draft.questions.some(isBlankQuestion) ? t('finishEmptyQuestion') : ''"
+                @click="addQuestion()"
                 x-text="t('addQuestion')"
               ></button>
               <button

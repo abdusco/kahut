@@ -4,11 +4,12 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "test:ui": "node --test tests/ui.test.mjs tests/image-ui.test.mjs tests/ai-ui.test.mjs",
+    "test:ui": "node --test tests/ui.test.mjs tests/image-ui.test.mjs tests/ai-ui.test.mjs tests/draft-ui.test.mjs",
     "format": "prettier --write assets scripts tests package.json .prettierrc.json README.md compose.yaml",
     "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
+    "@alpinejs/persist": "3.15.0",
     "alpinejs": "3.15.0",
     "playwright": "1.58.2",
     "prettier": "3.6.2",

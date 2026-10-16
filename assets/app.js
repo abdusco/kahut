@@ -126,6 +126,7 @@ export function quizApp() {
     genOpen: false,
     imagePrompt: storage.get('imagePrompt'),
     draftOriginal: '',
+    stash: null, // { user, id, draft }: the unsaved draft, persisted by init()
     historyGame: null,
     savedRoom: storage.saved()?.room || '',
     now: Date.now(),
@@ -170,6 +171,23 @@ export function quizApp() {
     init() {
       if (!messages[this.language]) this.language = 'en';
       this.savePreferences();
+      // Alpine's persist plugin mirrors the unsaved draft to localStorage so a
+      // refresh can restore it. Unavailable storage falls back to memory.
+      Alpine.persist('kahut.draft', {
+        get: () => this.stash,
+        set: (value) => {
+          this.stash = value;
+        },
+      });
+      const syncStash = () => {
+        // Logout clears the draft before the view changes.
+        this.stash =
+          this.draft && this.dirty()
+            ? { user: this.username, id: this.draft.id || '', draft: this.draft }
+            : null;
+      };
+      this.$watch('draft', syncStash);
+      this.$watch('draftOriginal', syncStash);
       live = new LiveConnection({
         onState: (state) => {
           if (this.state && state.sequence <= this.state.sequence) return;
@@ -303,16 +321,23 @@ export function quizApp() {
       this.setView('loading');
       if (route.kind === 'editQuiz') {
         const quiz = await this.request(`/quizzes/${encodeURIComponent(route.quizId)}`);
-        this.setDraft(quiz, true);
-      } else if (route.kind === 'newQuiz') this.newQuiz(true);
+        this.setDraft(quiz, true, true);
+      } else if (route.kind === 'newQuiz') this.newQuiz(true, true);
       else if (route.kind === 'history') await this.loadHistory(route.code);
       else await this.loadLibrary();
     },
     dirty() {
       return this.view === 'editor' && JSON.stringify(this.draft) !== this.draftOriginal;
     },
+    // Asks before dropping unsaved changes; true when it is fine to leave.
+    leaveEditor() {
+      if (!this.dirty()) return true;
+      if (!confirm(this.t('confirmDiscard'))) return false;
+      this.stash = null;
+      return true;
+    },
     home() {
-      if (this.dirty() && !confirm(this.t('confirmDiscard'))) return;
+      if (!this.leaveEditor()) return;
       live.stop();
       this.state = null;
       this.token = '';
@@ -477,7 +502,7 @@ export function quizApp() {
       this.navigate('/host');
     },
     backToLibrary() {
-      if (this.dirty() && !confirm(this.t('confirmDiscard'))) return;
+      if (!this.leaveEditor()) return;
       live.stop();
       this.token = '';
       this.state = null;
@@ -493,23 +518,45 @@ export function quizApp() {
         timeLimitSeconds: 20,
       };
     },
-    setDraft(quiz, replace = false) {
+    // `restore` (page loads only) brings back this account's unsaved changes
+    // for the same quiz.
+    setDraft(quiz, replace = false, restore = false) {
       // Quiz documents are JSON. Serialization also unwraps Alpine's proxies,
       // which structuredClone cannot copy.
       this.showProblems = false;
       this.loadAiStatus();
-      this.draft = JSON.parse(JSON.stringify(quiz));
-      this.draftOriginal = JSON.stringify(this.draft);
+      const base = JSON.parse(JSON.stringify(quiz));
+      const saved =
+        restore &&
+        this.stash?.user === this.username &&
+        this.stash.id === (quiz.id || '') &&
+        this.stash.draft;
+      this.draft = saved ? JSON.parse(JSON.stringify(saved)) : base;
+      this.draftOriginal = JSON.stringify(base);
       this.setView('editor');
       this.error = '';
-      this.message = '';
+      this.message = saved ? this.t('draftRestored') : '';
       this.navigate(editorPath(quiz.id), replace);
     },
-    newQuiz(replace = false) {
+    newQuiz(replace = false, restore = false) {
       this.setDraft(
         { version: 1, title: '', questions: [this.blankQuestion()] },
         replace,
+        restore,
       );
+    },
+    isBlankQuestion(q) {
+      return !q.text.trim() && !q.imageId && q.choices.every((c) => !c.trim());
+    },
+    // Only one empty question at a time.
+    canAddQuestion() {
+      return (
+        this.draft.questions.length < 100 &&
+        !this.draft.questions.some((q) => this.isBlankQuestion(q))
+      );
+    },
+    addQuestion() {
+      if (this.canAddQuestion()) this.draft.questions.push(this.blankQuestion());
     },
     editQuiz(quiz) {
       this.setDraft(quiz);
@@ -865,7 +912,12 @@ export function quizPrompt(language) {
 // Loading Alpine after registering the factory avoids module/defer timing races.
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   window.quizApp = quizApp;
-  const script = document.createElement('script');
-  script.src = '/vendor/alpine-3.15.0.js';
-  document.head.appendChild(script);
+  // Scripts added from JavaScript run in any order unless async is off. The
+  // plugin must be loaded before Alpine starts.
+  for (const src of ['/vendor/alpine-persist-3.15.0.js', '/vendor/alpine-3.15.0.js']) {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = false;
+    document.head.appendChild(script);
+  }
 }
