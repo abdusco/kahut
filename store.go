@@ -22,7 +22,10 @@ type Store struct {
 	key []byte
 }
 
-func openStore(path string) (*Store, error) {
+func openStore(path, signingKey string) (*Store, error) {
+	if len(signingKey) < 32 {
+		return nil, errors.New("SESSION_SIGNING_KEY must contain at least 32 bytes")
+	}
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			return nil, err
@@ -48,8 +51,8 @@ func openStore(path string) (*Store, error) {
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return nil, err
 	}
-	if version > 1 {
-		return nil, errors.New("database schema is newer than this server")
+	if version != 0 && version != 2 {
+		return nil, errors.New("unsupported database schema; set DB_PATH to a fresh database for multi-user support")
 	}
 	if version == 0 {
 		tx, err := db.Begin()
@@ -58,12 +61,12 @@ func openStore(path string) (*Store, error) {
 		}
 		defer tx.Rollback()
 		_, err = tx.Exec(`
-CREATE TABLE meta (key TEXT PRIMARY KEY, value BLOB NOT NULL);
-CREATE TABLE quizzes (id TEXT PRIMARY KEY, document BLOB NOT NULL);
-CREATE TABLE rooms (code TEXT PRIMARY KEY, document BLOB NOT NULL);
+CREATE TABLE quizzes (id TEXT PRIMARY KEY, owner TEXT NOT NULL, document BLOB NOT NULL);
+CREATE INDEX quizzes_owner ON quizzes(owner);
+CREATE TABLE rooms (code TEXT PRIMARY KEY, owner TEXT NOT NULL, document BLOB NOT NULL);
 CREATE TABLE answers (room_code TEXT NOT NULL REFERENCES rooms(code), player_id TEXT NOT NULL, question INTEGER NOT NULL, document BLOB NOT NULL, PRIMARY KEY(room_code,player_id,question));
-CREATE TABLE sessions (id TEXT PRIMARY KEY, role TEXT NOT NULL, room_code TEXT NOT NULL, player_id TEXT NOT NULL, expires INTEGER NOT NULL);
-PRAGMA user_version=1;`)
+CREATE TABLE sessions (id TEXT PRIMARY KEY, role TEXT NOT NULL, room_code TEXT NOT NULL, player_id TEXT NOT NULL, username TEXT NOT NULL, expires INTEGER NOT NULL);
+PRAGMA user_version=2;`)
 		if err != nil {
 			return nil, err
 		}
@@ -71,18 +74,7 @@ PRAGMA user_version=1;`)
 			return nil, err
 		}
 	}
-	s := &Store{db: db}
-	err = db.QueryRow("SELECT value FROM meta WHERE key='signing_key'").Scan(&s.key)
-	if errors.Is(err, sql.ErrNoRows) {
-		s.key = make([]byte, 32)
-		if _, err = rand.Read(s.key); err != nil {
-			return nil, err
-		}
-		_, err = db.Exec("INSERT INTO meta(key,value) VALUES('signing_key',?)", s.key)
-	}
-	if err != nil {
-		return nil, err
-	}
+	s := &Store{db: db, key: []byte(signingKey)}
 	if path != ":memory:" {
 		if err = os.Chmod(path, 0600); err != nil {
 			return nil, err
@@ -106,7 +98,7 @@ func (s *Store) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Room) error
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "INSERT INTO quizzes(id,document) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", q.ID, b); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO quizzes(id,owner,document) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", q.ID, q.Owner, b); err != nil {
 		return err
 	}
 	for _, room := range renamedRooms {
@@ -122,7 +114,7 @@ func (s *Store) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Room) error
 }
 
 func (s *Store) Quizzes(ctx context.Context) ([]Quiz, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT document FROM quizzes ORDER BY rowid DESC")
+	rows, err := s.db.QueryContext(ctx, "SELECT owner,document FROM quizzes ORDER BY rowid DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +123,7 @@ func (s *Store) Quizzes(ctx context.Context) ([]Quiz, error) {
 	for rows.Next() {
 		var b []byte
 		var q Quiz
-		if err = rows.Scan(&b); err != nil {
+		if err = rows.Scan(&q.Owner, &b); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(b, &q); err != nil {
@@ -145,7 +137,18 @@ func (s *Store) Quizzes(ctx context.Context) ([]Quiz, error) {
 func (s *Store) Quiz(ctx context.Context, id string) (Quiz, error) {
 	var b []byte
 	var q Quiz
-	err := s.db.QueryRowContext(ctx, "SELECT document FROM quizzes WHERE id=?", id).Scan(&b)
+	err := s.db.QueryRowContext(ctx, "SELECT owner,document FROM quizzes WHERE id=?", id).Scan(&q.Owner, &b)
+	if err != nil {
+		return q, err
+	}
+	err = json.Unmarshal(b, &q)
+	return q, err
+}
+
+func (s *Store) OwnedQuiz(ctx context.Context, id, owner string) (Quiz, error) {
+	var b []byte
+	q := Quiz{Owner: owner}
+	err := s.db.QueryRowContext(ctx, "SELECT document FROM quizzes WHERE id=? AND owner=?", id, owner).Scan(&b)
 	if err != nil {
 		return q, err
 	}
@@ -163,7 +166,7 @@ func (s *Store) SaveRoom(ctx context.Context, r Room, a *Answer) error {
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, "INSERT INTO rooms(code,document) VALUES(?,?) ON CONFLICT(code) DO UPDATE SET document=excluded.document", r.Code, b)
+	_, err = tx.ExecContext(ctx, "INSERT INTO rooms(code,owner,document) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET document=excluded.document", r.Code, r.Owner, b)
 	if err != nil {
 		return err
 	}
@@ -180,7 +183,7 @@ func (s *Store) SaveRoom(ctx context.Context, r Room, a *Answer) error {
 }
 
 func (s *Store) Rooms(ctx context.Context) ([]Room, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT document FROM rooms ORDER BY rowid DESC")
+	rows, err := s.db.QueryContext(ctx, "SELECT owner,document FROM rooms ORDER BY rowid DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +192,7 @@ func (s *Store) Rooms(ctx context.Context) ([]Room, error) {
 	for rows.Next() {
 		var b []byte
 		var r Room
-		if err = rows.Scan(&b); err != nil {
+		if err = rows.Scan(&r.Owner, &b); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(b, &r); err != nil {
@@ -201,6 +204,7 @@ func (s *Store) Rooms(ctx context.Context) ([]Room, error) {
 }
 
 type Session struct {
+	Username string `json:"username,omitempty"`
 	ID       string `json:"-"`
 	Role     string `json:"role"`
 	Room     string `json:"room"`
@@ -214,13 +218,13 @@ func (s *Store) sign(id string) string {
 	return id + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
-func (s *Store) NewSession(ctx context.Context, role, room, player string) (string, Session, error) {
+func (s *Store) NewSession(ctx context.Context, role, room, player, username string) (string, Session, error) {
 	duration := 30 * 24 * time.Hour
 	if role == "host" {
 		duration = 12 * time.Hour
 	}
-	v := Session{ID: randomID(), Role: role, Room: room, PlayerID: player, Expires: time.Now().Add(duration).UnixMilli()}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO sessions(id,role,room_code,player_id,expires) VALUES(?,?,?,?,?)", v.ID, v.Role, v.Room, v.PlayerID, v.Expires)
+	v := Session{ID: randomID(), Role: role, Room: room, PlayerID: player, Username: username, Expires: time.Now().Add(duration).UnixMilli()}
+	_, err := s.db.ExecContext(ctx, "INSERT INTO sessions(id,role,room_code,player_id,username,expires) VALUES(?,?,?,?,?,?)", v.ID, v.Role, v.Room, v.PlayerID, v.Username, v.Expires)
 	return s.sign(v.ID), v, err
 }
 
@@ -230,7 +234,7 @@ func (s *Store) Session(ctx context.Context, token string) (Session, error) {
 	if !ok || len(token) > 200 || !hmac.Equal([]byte(s.sign(id)), []byte(token)) {
 		return v, errors.New("invalid session")
 	}
-	err := s.db.QueryRowContext(ctx, "SELECT id,role,room_code,player_id,expires FROM sessions WHERE id=?", id).Scan(&v.ID, &v.Role, &v.Room, &v.PlayerID, &v.Expires)
+	err := s.db.QueryRowContext(ctx, "SELECT id,role,room_code,player_id,username,expires FROM sessions WHERE id=?", id).Scan(&v.ID, &v.Role, &v.Room, &v.PlayerID, &v.Username, &v.Expires)
 	if err != nil {
 		return v, err
 	}

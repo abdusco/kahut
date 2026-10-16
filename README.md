@@ -7,7 +7,8 @@ A self-hosted, real-time quiz game. Hosts create quizzes or import JSON, invite 
 Requires Go 1.27 or later. No frontend build is needed.
 
 ```sh
-HOST_PASSWORD='choose-a-host-password' go run .
+export SESSION_SIGNING_KEY="$(openssl rand -hex 32)"
+AUTH_USERS='["alice:choose-a-password","bob:another-password"]' go run .
 ```
 
 Open <http://localhost:8080>. Choose **Host a game**, sign in, and create a quiz or try the sample. Players open the invitation link or enter the room code on the homepage.
@@ -16,9 +17,13 @@ Pages use paths on the app’s subdomain: `/host` for the dashboard, `/host/quiz
 
 Renaming a quiz updates its live and saved game titles, including games created before the rename. Changes to question content apply to new games; historical questions, answers, and scores are preserved.
 
-Configuration: `PORT` (default `8080`), `ADDR` (used when `PORT` is unset), `DB_PATH` (default `./data/kahut.db`), and `DEBUG=1` to serve assets from disk. Keep the database directory persistent and private; it contains game data and session signing material. Changing `HOST_PASSWORD` requires a restart; existing host sessions remain valid until logout or their 12-hour expiry.
+`AUTH_USERS` is a required JSON array of `username:password` strings. Usernames are unique and case-sensitive; passwords may contain colons. Each account owns its quizzes, games, and results. Players still join with just a nickname. Restart the server to change accounts. Removing an account disables its host sessions; changing its password leaves existing sessions valid until logout or their 12-hour expiry.
 
-API requests support all origins, including `Authorization`/JSON preflights, and authenticated WebSocket connections accept tunnel origins even when the proxy rewrites `Host`. Start the app locally, then point cloudflared or ngrok at `http://localhost:8080` and open the public HTTPS URL. Invitations and live connections use that public origin automatically. Authentication still requires the host password or a player session token; cookie-based credentials are not used.
+`SESSION_SIGNING_KEY` is required and must contain at least 32 bytes. Generate a random value once, then save it in your server environment and reuse it across restarts. It is never stored in SQLite. Changing it invalidates existing host and player sessions.
+
+Configuration: `PORT` (default `8080`), `ADDR` (used when `PORT` is unset), `DB_PATH` (default `./data/kahut.db`), and `DEBUG=1` to serve assets from disk. Keep the database directory persistent and private; it contains game data and session records. Multi-user support uses a fresh schema; point `DB_PATH` at a new database if you used the earlier single-host prototype.
+
+API requests support all origins, including `Authorization`/JSON preflights, and authenticated WebSocket connections accept tunnel origins even when the proxy rewrites `Host`. Start the app locally, then point cloudflared or ngrok at `http://localhost:8080` and open the public HTTPS URL. Invitations and live connections use that public origin automatically. Authentication requires a configured account or a player session token; cookie-based credentials are not used.
 
 Questions have 2–4 choices, one correct answer, and a 5–120 second timer. Correct answers earn 500–1,000 points based on server receipt time; wrong or missing answers earn zero. Players first see answer feedback; the host’s **Show leaderboard** action switches everyone to a dedicated ranking screen, and **Next question** returns them to the quiz. Late joiners wait for the next question. Interrupted questions retain their original deadlines.
 
@@ -61,7 +66,7 @@ Browser dependencies are pinned and vendored with licenses under `assets/vendor/
 ## Deploy
 
 ```sh
-HOST_PASSWORD='choose-a-host-password' docker compose up --build -d
+AUTH_USERS='["alice:choose-a-password","bob:another-password"]' docker compose up --build -d
 ```
 
 Set `HOST_PORT` to change the published port. The non-root container stores its database in the `kahut-data` volume. Deploy one process per database; multiple replicas are not supported. Put an HTTPS reverse proxy in front for remote use and PWA installation, and enable WebSocket upgrades. No image or public release is published by this repository setup.

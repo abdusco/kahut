@@ -17,8 +17,9 @@ export const messages = {
     home: 'Home',
     hostDesk: 'The host desk',
     welcomeHost: 'Let’s get it started.',
-    passwordCopy: 'Enter your host password to manage quizzes and run games.',
-    hostPassword: 'Host password',
+    passwordCopy: 'Sign in to manage your quizzes and run games.',
+    username: 'Username',
+    hostPassword: 'Password',
     signIn: 'Sign in',
     signOut: 'Sign out',
     yourQuizzes: 'Your quiz collection.',
@@ -164,8 +165,9 @@ export const messages = {
     home: 'Ana sayfa',
     hostDesk: 'Sunucu masası',
     welcomeHost: 'Haydi başlayalım.',
-    passwordCopy: 'Yarışmaları düzenlemek ve oyun başlatmak için sunucu şifreni gir.',
-    hostPassword: 'Sunucu şifresi',
+    passwordCopy: 'Yarışmalarını düzenlemek ve oyun başlatmak için giriş yap.',
+    username: 'Kullanıcı adı',
+    hostPassword: 'Şifre',
     signIn: 'Giriş yap',
     signOut: 'Çıkış yap',
     yourQuizzes: 'Yarışma koleksiyonun.',
@@ -296,7 +298,7 @@ export const messages = {
 };
 
 const errorsTR = {
-  'incorrect host password': 'Sunucu şifresi yanlış.',
+  'incorrect username or password': 'Kullanıcı adı veya şifre yanlış.',
   'room not found': 'Oda bulunamadı.',
   'nickname is already taken': 'Bu takma ad kullanılıyor.',
   'room is full': 'Oda dolu.',

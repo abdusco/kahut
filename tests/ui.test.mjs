@@ -22,7 +22,8 @@ test(
       server = spawn(binary, {
         env: {
           ...process.env,
-          HOST_PASSWORD: 'browser-test-password',
+          AUTH_USERS: '["host:browser-test-password"]',
+          SESSION_SIGNING_KEY: 'browser-test-signing-key-at-least-32-bytes',
           DB_PATH: join(directory, 'game.db'),
           PORT: '18081',
         },
@@ -59,7 +60,8 @@ test(
       await settings.getByRole('button', { name: 'Dismiss', exact: true }).click();
       await settings.waitFor({ state: 'hidden' });
       await host.getByRole('button', { name: 'Host a game', exact: true }).click();
-      await host.getByLabel('Host password').fill('browser-test-password');
+      await host.getByLabel('Username', { exact: true }).fill('host');
+      await host.getByLabel('Password', { exact: true }).fill('browser-test-password');
       await host.getByRole('button', { name: 'Sign in', exact: true }).click();
       await host.waitForURL(`${base}/host`);
       await host.reload();
@@ -139,7 +141,7 @@ test(
         await host.locator('.choice-editor.is-correct input[type="text"]').inputValue(),
         'Shoe',
       );
-      await host.getByRole('button', { name: 'Save quiz', exact: true }).click();
+      await host.getByRole('button', { name: 'Save quiz', exact: true }).last().click();
       await host.getByRole('button', { name: 'Edit', exact: true }).click();
       assert.equal(
         await host.locator('.choice-editor.is-correct input[type="text"]').inputValue(),
@@ -150,7 +152,7 @@ test(
         await host.locator('.choice-editor.is-correct .correct-choice-label').isVisible(),
         true,
       );
-      await host.getByRole('button', { name: 'Save quiz', exact: true }).click();
+      await host.getByRole('button', { name: 'Save quiz', exact: true }).first().click();
       await host.getByRole('button', { name: 'Host', exact: true }).click();
       await host.waitForURL(/\/rooms\/[A-Z0-9]{8}$/);
       await player.goto(host.url());

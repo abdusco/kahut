@@ -79,6 +79,7 @@ export function quizApp() {
     code: '',
     nickname: storage.get('nickname'),
     password: '',
+    username: storage.get('username'),
     hostToken: storage.get('hostToken'),
     token: '',
     isHost: false,
@@ -402,11 +403,12 @@ export function quizApp() {
       return this.run(async () => {
         const result = await this.request('/host/login', {
           method: 'POST',
-          body: { password: this.password },
+          body: { username: this.username, password: this.password },
           token: '',
         });
         this.password = '';
         this.hostToken = result.token;
+        storage.set('username', this.username);
         storage.set('hostToken', result.token);
         await this.loadHostRoute(resolveRoute(location.pathname, location.search));
       });
@@ -415,6 +417,11 @@ export function quizApp() {
       return this.run(async () => {
         await this.request('/host/logout', { method: 'POST', body: {} });
         this.hostToken = '';
+        this.quizzes = [];
+        this.games = [];
+        this.draft = null;
+        this.draftOriginal = '';
+        this.historyGame = null;
         storage.remove('hostToken');
         if (storage.saved()?.role === 'host') storage.remove('session');
         this.home();

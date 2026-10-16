@@ -18,11 +18,11 @@ func TestRestartRecovery(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			path := filepath.Join(t.TempDir(), "quiz.db")
-			s, err := openStore(path)
+			s, err := openStore(path, "test-signing-key-at-least-32-bytes")
 			if err != nil {
 				t.Fatal(err)
 			}
-			token, session, err := s.NewSession(ctx, "player", "ABCDEFGH", "p1")
+			token, session, err := s.NewSession(ctx, "player", "ABCDEFGH", "p1", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -31,23 +31,26 @@ func TestRestartRecovery(t *testing.T) {
 			if tt.expired {
 				deadline = now - 1000
 			}
-			r := Room{Code: "ABCDEFGH", Quiz: testQuiz(), Phase: "question", Revision: 2, Sequence: 3, StartedAt: now - 10000, Deadline: deadline, Players: []Player{{ID: "p1", Name: "Ada", Score: 750}, {ID: "p2", Name: "Lin"}}, Answers: []Answer{{PlayerID: "p1", Question: 0, Choice: 0, Points: 750, ReceivedAt: now - 5000}}}
+			r := Room{Owner: "host", Code: "ABCDEFGH", Quiz: testQuiz(), Phase: "question", Revision: 2, Sequence: 3, StartedAt: now - 10000, Deadline: deadline, Players: []Player{{ID: "p1", Name: "Ada", Score: 750}, {ID: "p2", Name: "Lin"}}, Answers: []Answer{{PlayerID: "p1", Question: 0, Choice: 0, Points: 750, ReceivedAt: now - 5000}}}
 			if err = s.SaveRoom(ctx, r, &r.Answers[0]); err != nil {
 				t.Fatal(err)
 			}
 			if err = s.db.Close(); err != nil {
 				t.Fatal(err)
 			}
-			s, err = openStore(path)
+			s, err = openStore(path, "test-signing-key-at-least-32-bytes")
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer s.db.Close()
-			a, err := newApp(ctx, s, "password")
+			a, err := newApp(ctx, s, `["host:password"]`)
 			if err != nil {
 				t.Fatal(err)
 			}
 			got := a.rooms[r.Code]
+			if got.Owner != "host" || cloneRoom(got).Owner != "host" {
+				t.Fatal("room ownership was lost during persistence or cloning")
+			}
 			if got.Phase != tt.phase || got.Deadline != deadline || got.Players[0].Score != 750 || len(got.Answers) != 1 {
 				t.Fatalf("bad recovery: %+v", got)
 			}
@@ -67,7 +70,7 @@ func TestRestartRecovery(t *testing.T) {
 
 func TestRoomAnswerTransactionRollback(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(filepath.Join(t.TempDir(), "quiz.db"))
+	s, err := openStore(filepath.Join(t.TempDir(), "quiz.db"), "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,17 +94,17 @@ func TestRoomAnswerTransactionRollback(t *testing.T) {
 
 func TestSessions(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(":memory:")
+	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	token, session, err := s.NewSession(ctx, "host", "", "")
+	token, session, err := s.NewSession(ctx, "host", "", "", "host")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Session(ctx, token); err != nil {
-		t.Fatal(err)
+	if got, err := s.Session(ctx, token); err != nil || got.Username != "host" {
+		t.Fatalf("host session lost its account: %+v, %v", got, err)
 	}
 	if _, err = s.Session(ctx, token+"tampered"); err == nil {
 		t.Fatal("tampered token accepted")
@@ -114,10 +117,62 @@ func TestSessions(t *testing.T) {
 	}
 }
 
+func TestSigningKeyConfiguration(t *testing.T) {
+	for _, key := range []string{"", "too-short"} {
+		if s, err := openStore(":memory:", key); err == nil {
+			s.db.Close()
+			t.Fatal("accepted a missing or short signing key")
+		}
+	}
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "quiz.db")
+	s, err := openStore(path, "first-test-signing-key-at-least-32-bytes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, _, err := s.NewSession(ctx, "host", "", "", "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	quiz := testQuiz()
+	quiz.ID, quiz.Owner = "alice-quiz", "alice"
+	if err = s.SaveQuiz(ctx, quiz, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(path, "first-test-signing-key-at-least-32-bytes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session, err := s.Session(ctx, token); err != nil || session.Username != "alice" {
+		t.Fatalf("stable signing key did not restore the host session: %+v, %v", session, err)
+	}
+	if quiz, err := s.OwnedQuiz(ctx, quiz.ID, "alice"); err != nil || quiz.Owner != "alice" {
+		t.Fatalf("quiz ownership did not survive restart: %+v, %v", quiz, err)
+	}
+	var metaTables int
+	if err = s.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='meta'").Scan(&metaTables); err != nil || metaTables != 0 {
+		t.Fatalf("unexpected signing-key storage: %d, %v", metaTables, err)
+	}
+	if err = s.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(path, "different-test-signing-key-at-least-32-bytes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	if _, err = s.Session(ctx, token); err == nil {
+		t.Fatal("rotating the signing key did not invalidate the old token")
+	}
+}
+
 func TestQuizRenameTransaction(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "quiz.db")
-	s, err := openStore(path)
+	s, err := openStore(path, "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,12 +211,12 @@ func TestQuizRenameTransaction(t *testing.T) {
 	if err = s.db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(path)
+	s, err = openStore(path, "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	a, err := newApp(ctx, s, "password")
+	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +240,7 @@ func TestExistingGameTitlesFollowSavedQuizOnStartup(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			s, err := openStore(":memory:")
+			s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -202,7 +257,7 @@ func TestExistingGameTitlesFollowSavedQuizOnStartup(t *testing.T) {
 			if err = s.SaveRoom(ctx, room, nil); err != nil {
 				t.Fatal(err)
 			}
-			a, err := newApp(ctx, s, "password")
+			a, err := newApp(ctx, s, `["host:password"]`)
 			if err != nil {
 				t.Fatal(err)
 			}

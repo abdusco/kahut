@@ -17,6 +17,7 @@ type Question struct {
 }
 
 type Quiz struct {
+	Owner     string     `json:"-"`
 	ID        string     `json:"id,omitempty"`
 	Version   int        `json:"version"`
 	Title     string     `json:"title"`
@@ -75,6 +76,7 @@ type Answer struct {
 }
 
 type Room struct {
+	Owner     string   `json:"-"`
 	Code      string   `json:"code"`
 	Quiz      Quiz     `json:"quiz"`
 	Phase     string   `json:"phase"`

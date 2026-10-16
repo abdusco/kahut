@@ -20,12 +20,12 @@ import (
 func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := openStore(":memory:")
+	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	a, err := newApp(ctx, s, "test-password")
+	a, err := newApp(ctx, s, `["host:test-password"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +39,7 @@ func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		req.Header.Set("Content-Type", "application/json")
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
@@ -56,8 +57,8 @@ func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 		}
 		return result
 	}
-	call("POST", "/api/host/login", "", map[string]string{"password": "wrong"}, 401)
-	login := call("POST", "/api/host/login", "", map[string]string{"password": "test-password"}, 200)
+	call("POST", "/api/host/login", "", map[string]string{"username": "host", "password": "wrong"}, 401)
+	login := call("POST", "/api/host/login", "", map[string]string{"username": "host", "password": "test-password"}, 200)
 	host := login["token"].(string)
 	quiz := call("POST", "/api/quizzes", host, testQuiz(), 200)
 	id := quiz["id"].(string)
@@ -170,12 +171,12 @@ func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 func TestConcurrentAnswersCommitOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := openStore(":memory:")
+	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	a, err := newApp(ctx, s, "password")
+	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +186,7 @@ func TestConcurrentAnswersCommitOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.rooms[room.Code] = room
-	token, _, err := s.NewSession(ctx, "player", room.Code, "p1")
+	token, _, err := s.NewSession(ctx, "player", room.Code, "p1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +201,7 @@ func TestConcurrentAnswersCommitOnce(t *testing.T) {
 				t.Error(err)
 				return
 			}
+			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+token)
 			res, err := server.Client().Do(req)
 			if err != nil {
@@ -230,12 +232,12 @@ func TestConcurrentAnswersCommitOnce(t *testing.T) {
 func TestMultipleStreamsPresence(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := openStore(":memory:")
+	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	a, err := newApp(ctx, s, "password")
+	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +246,7 @@ func TestMultipleStreamsPresence(t *testing.T) {
 	if err = s.SaveRoom(ctx, r, nil); err != nil {
 		t.Fatal(err)
 	}
-	token, _, err := s.NewSession(ctx, "player", r.Code, "p1")
+	token, _, err := s.NewSession(ctx, "player", r.Code, "p1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,16 +306,16 @@ func TestMultipleStreamsPresence(t *testing.T) {
 
 func TestAPIRejectsInvalidRequests(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(":memory:")
+	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	a, err := newApp(ctx, s, "password")
+	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, _, err := s.NewSession(ctx, "host", "", "")
+	token, _, err := s.NewSession(ctx, "host", "", "", "host")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,6 +332,7 @@ func TestAPIRejectsInvalidRequests(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
 			if tt.token {
 				req.Header.Set("Authorization", "Bearer "+token)
 			}
@@ -347,16 +350,16 @@ func TestAPIRejectsInvalidRequests(t *testing.T) {
 
 func TestCrossOriginRequests(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(":memory:")
+	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	a, err := newApp(ctx, s, "password")
+	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, _, err := s.NewSession(ctx, "host", "", "")
+	token, _, err := s.NewSession(ctx, "host", "", "", "host")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,11 +370,12 @@ func TestCrossOriginRequests(t *testing.T) {
 	}{
 		{name: "cloudflared preflight", method: "OPTIONS", path: "/api/quizzes", origin: "https://kahut.trycloudflare.com", want: 204},
 		{name: "ngrok authenticated request", method: "GET", path: "/api/session", origin: "https://kahut.ngrok-free.app", auth: true, want: 200},
-		{name: "cross-origin login", method: "POST", path: "/api/host/login", origin: "https://kahut.trycloudflare.com", body: `{"password":"password"}`, want: 200},
+		{name: "cross-origin login", method: "POST", path: "/api/host/login", origin: "https://kahut.trycloudflare.com", body: `{"username":"host","password":"password"}`, want: 200},
 		{name: "authentication still required", method: "GET", path: "/api/session", origin: "https://kahut.ngrok-free.app", want: 401},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Origin", tt.origin)
 			if tt.auth {
 				req.Header.Set("Authorization", "Bearer "+token)
@@ -406,12 +410,12 @@ func TestCrossOriginRequests(t *testing.T) {
 }
 
 func TestHostDashboardRoute(t *testing.T) {
-	s, err := openStore(":memory:")
+	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	a, err := newApp(context.Background(), s, "password")
+	a, err := newApp(context.Background(), s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,22 +15,22 @@ import (
 var assets embed.FS
 
 func main() {
-	password := os.Getenv("HOST_PASSWORD")
-	if password == "" {
-		log.Fatal("HOST_PASSWORD is required")
+	users := os.Getenv("AUTH_USERS")
+	if users == "" {
+		log.Fatal("AUTH_USERS is required")
 	}
 	path := os.Getenv("DB_PATH")
 	if path == "" {
 		path = "./data/kahut.db"
 	}
-	s, err := openStore(path)
+	s, err := openStore(path, os.Getenv("SESSION_SIGNING_KEY"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer s.db.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	a, err := newApp(ctx, s, password)
+	a, err := newApp(ctx, s, users)
 	if err != nil {
 		log.Fatal(err)
 	}

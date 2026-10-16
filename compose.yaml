@@ -4,7 +4,8 @@ services:
     ports:
       - '${HOST_PORT:-8080}:8080'
     environment:
-      HOST_PASSWORD: '${HOST_PASSWORD:?Set HOST_PASSWORD}'
+      AUTH_USERS: '${AUTH_USERS:?Set AUTH_USERS to a JSON array of username:password strings}'
+      SESSION_SIGNING_KEY: '${SESSION_SIGNING_KEY:?Set a stable random signing key of at least 32 bytes}'
       DB_PATH: /data/kahut.db
     volumes:
       - kahut-data:/data
