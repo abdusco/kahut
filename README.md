@@ -35,6 +35,14 @@ Each question can have one image. In the quiz editor, choose **Add image**, drop
 
 `GET /api/images/{id}` is public because `<img>` requests cannot send the `Authorization` header. Image IDs are random and unguessable, but anyone with a link can view the image. Do not upload sensitive images. Quiz JSON export omits images, because image IDs only work on the server and account that uploaded them.
 
+### AI-generated images
+
+Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` (an [OpenRouter](https://openrouter.ai) model that can output images, for example `google/gemini-2.5-flash-image`) to show a **✨ Generate** button next to **Add image**. Without both variables the button is hidden. `OPENROUTER_BASE_URL` overrides the API address and exists for tests.
+
+The prompt box starts with the host's default image prompt, the question, and its answer options. The host can edit it before generating. The default image prompt is set in the Settings menu and is kept in that browser's local storage. Generated images are stored and handled like uploads.
+
+The key and model stay on the server and are shared by every account in `AUTH_USERS`, so all generation is billed to one OpenRouter account. Each host can run one generation at a time; there is no other limit. The prompt, which includes the question text and answers, is sent to OpenRouter and the model provider.
+
 ## Quiz JSON
 
 Use **Export** for a portable file or **Import JSON** to open the import dialog. Paste JSON text, paste/drop a JSON file, or select a file to populate the textarea, then review and import. The dialog includes a copyable prompt for generating quizzes with an AI of your choice. Imports are limited to 1 MB and 100 questions. `correctIndex` starts at zero; omitted or zero `timeLimitSeconds` defaults to 20.
