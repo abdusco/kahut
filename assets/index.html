@@ -788,7 +788,8 @@
       x-ref="settingsDialog"
       aria-labelledby="settings-heading"
       @close="menuOpen=false"
-      @click="if($event.target===$el) $el.close()"
+      @pointerdown="$el.backdropDown = $event.target === $el"
+      @click="if($event.target===$el && $el.backdropDown) $el.close()"
     >
       <div class="settings-content">
         <div class="dialog-heading">
