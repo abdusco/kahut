@@ -327,6 +327,9 @@ main {
   min-width: 0;
 }
 .hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   background: #6542df;
   color: white;
   border-radius: 32px;
@@ -386,7 +389,7 @@ main {
   font-weight: 900;
   line-height: 1.04;
   letter-spacing: -0.065em;
-  margin: 30px 0 22px;
+  margin: 0 0 22px;
 }
 .hero h1 em {
   font-style: normal;
