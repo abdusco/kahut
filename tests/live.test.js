@@ -257,6 +257,38 @@ test('quiz validation rejects invalid scoring indices and timers', () => {
   assert.equal(validQuiz(quiz), false);
 });
 
+test('editing a reactive quiz makes an independent draft without changing the library', () => {
+  const original = {
+    id: 'quiz-1',
+    version: 1,
+    title: 'Original quiz',
+    questions: [
+      {
+        text: 'Original question?',
+        choices: ['Yes', 'No'],
+        correctIndex: 0,
+        timeLimitSeconds: 20,
+      },
+    ],
+  };
+  const reactive = new Proxy(
+    { ...original, questions: new Proxy([new Proxy(original.questions[0], {})], {}) },
+    {},
+  );
+  const ui = quizApp();
+  ui.editQuiz(reactive);
+  assert.equal(ui.view, 'editor');
+  assert.equal(ui.draft.id, 'quiz-1');
+  assert.equal(ui.dirty(), false);
+  ui.draft.title = 'Edited quiz';
+  ui.draft.questions[0].text = 'Edited question?';
+  ui.draft.questions[0].choices[0] = 'Maybe';
+  assert.equal(ui.dirty(), true);
+  assert.equal(original.title, 'Original quiz');
+  assert.equal(original.questions[0].text, 'Original question?');
+  assert.deepEqual(original.questions[0].choices, ['Yes', 'No']);
+});
+
 test('English and Turkish provide the same UI messages', () => {
   assert.deepEqual(Object.keys(messages.en).sort(), Object.keys(messages.tr).sort());
 });

@@ -383,7 +383,9 @@ export function quizApp() {
       };
     },
     setDraft(quiz) {
-      this.draft = structuredClone(quiz);
+      // Quiz documents are JSON. Serialization also unwraps Alpine's proxies,
+      // which structuredClone cannot copy.
+      this.draft = JSON.parse(JSON.stringify(quiz));
       this.draftOriginal = JSON.stringify(this.draft);
       this.view = 'editor';
       this.error = '';
