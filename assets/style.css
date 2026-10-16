@@ -319,7 +319,7 @@ main {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.95fr);
   gap: 28px;
-  align-items: center;
+  align-items: stretch;
   padding: 12px 0 15px;
 }
 .hero,
