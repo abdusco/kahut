@@ -125,12 +125,33 @@ func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 	updated.Title = "Edited"
 	updated.Questions[0].Text = "Changed"
 	call("PUT", "/api/quizzes/"+id, host, updated, 200)
+	historyRequest, err := http.NewRequest("GET", server.URL+"/api/games", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	historyRequest.Header.Set("Authorization", "Bearer "+host)
+	historyResponse, err := server.Client().Do(historyRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var history []struct {
+		Code  string `json:"code"`
+		Title string `json:"title"`
+	}
+	err = json.NewDecoder(historyResponse.Body).Decode(&history)
+	historyResponse.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if historyResponse.StatusCode != http.StatusOK || len(history) != 1 || history[0].Code != room || history[0].Title != "Edited" {
+		t.Fatalf("game list did not reflect renamed quiz: %+v", history)
+	}
 	call("DELETE", "/api/quizzes/"+id, host, nil, 200)
 	a.mu.Lock()
 	saved := cloneRoom(a.rooms[room])
 	a.mu.Unlock()
-	if saved.Quiz.Title != "Space" || saved.Quiz.Questions[0].Text != "The red planet?" {
-		t.Fatal("quiz edit changed game copy")
+	if saved.Quiz.Title != "Edited" || saved.Quiz.Questions[0].Text != "The red planet?" {
+		t.Fatal("quiz rename must update the title while preserving the game questions")
 	}
 	call("POST", "/api/action", host, map[string]any{"room": room, "action": "leaderboard", "revision": 3}, 200)
 	call("POST", "/api/action", host, map[string]any{"room": room, "action": "next", "revision": 4}, 200)
@@ -138,6 +159,9 @@ func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 	result := call("GET", "/api/games/"+room, host, nil, 200)
 	if result["game"].(map[string]any)["phase"] != "finished" {
 		t.Fatal("history missing finished game")
+	}
+	if result["game"].(map[string]any)["quiz"].(map[string]any)["title"] != "Edited" || result["snapshot"].(map[string]any)["title"] != "Edited" {
+		t.Fatal("saved results lost the renamed title after quiz deletion")
 	}
 	call("POST", "/api/host/logout", host, map[string]any{}, 200)
 	call("GET", "/api/session", host, nil, 401)

@@ -14,6 +14,8 @@ Open <http://localhost:8080>. Choose **Host a game**, sign in, and create a quiz
 
 The host dashboard lives at `/host`. Opening or refreshing that URL restores the quiz library when a valid host session is saved, or shows host login otherwise.
 
+Renaming a quiz updates its live and saved game titles, including games created before the rename. Changes to question content apply to new games; historical questions, answers, and scores are preserved.
+
 Configuration: `PORT` (default `8080`), `ADDR` (used when `PORT` is unset), `DB_PATH` (default `./data/kahut.db`), and `DEBUG=1` to serve assets from disk. Keep the database directory persistent and private; it contains game data and session signing material. Changing `HOST_PASSWORD` requires a restart; existing host sessions remain valid until logout or their 12-hour expiry.
 
 API requests support all origins, including `Authorization`/JSON preflights, and authenticated WebSocket connections accept tunnel origins even when the proxy rewrites `Host`. Start the app locally, then point cloudflared or ngrok at `http://localhost:8080` and open the public HTTPS URL. Invitations and live connections use that public origin automatically. Authentication still requires the host password or a player session token; cookie-based credentials are not used.

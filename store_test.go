@@ -113,3 +113,109 @@ func TestSessions(t *testing.T) {
 		t.Fatal("expired token accepted")
 	}
 }
+
+func TestQuizRenameTransaction(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "quiz.db")
+	s, err := openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quiz := testQuiz()
+	quiz.ID = "quiz-1"
+	if err = s.SaveQuiz(ctx, quiz, nil); err != nil {
+		t.Fatal(err)
+	}
+	room := Room{Code: "ABCDEFGH", Quiz: testQuiz(), Phase: "finished", Players: []Player{{ID: "p1", Score: 750}}, Answers: []Answer{{PlayerID: "p1", Question: 0, Choice: 0, Points: 750}}}
+	room.Quiz.ID = quiz.ID
+	if err = s.SaveRoom(ctx, room, &room.Answers[0]); err != nil {
+		t.Fatal(err)
+	}
+	quiz.Title = "New title"
+	quiz.Questions[0].Text = "A different question"
+	room.Quiz.Title = quiz.Title
+	if _, err = s.db.Exec(`CREATE TRIGGER fail_room_update BEFORE UPDATE ON rooms BEGIN SELECT RAISE(FAIL, 'simulated failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SaveQuiz(ctx, quiz, []Room{room}); err == nil {
+		t.Fatal("expected a room update failure")
+	}
+	unchanged, err := s.Quiz(ctx, quiz.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.Title != "Space" {
+		t.Fatal("quiz title was committed despite a failed game update")
+	}
+	if _, err = s.db.Exec("DROP TRIGGER fail_room_update"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SaveQuiz(ctx, quiz, []Room{room}); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = openStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	a, err := newApp(ctx, s, "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := a.rooms[room.Code]
+	if restored.Quiz.Title != "New title" {
+		t.Fatal("renamed game title was not preserved after restart")
+	}
+	if restored.Quiz.Questions[0].Text != "The red planet?" || restored.Players[0].Score != 750 || len(restored.Answers) != 1 {
+		t.Fatal("renaming altered historical questions, answers, or scores")
+	}
+}
+
+func TestExistingGameTitlesFollowSavedQuizOnStartup(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		sourceExists bool
+		want         string
+	}{
+		{"renamed quiz", true, "Current title"},
+		{"deleted quiz", false, "Original title"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			s, err := openStore(":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.db.Close()
+			quiz := testQuiz()
+			quiz.ID, quiz.Title = "quiz-1", "Current title"
+			if tt.sourceExists {
+				if err = s.SaveQuiz(ctx, quiz, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			room := Room{Code: "ABCDEFGH", Quiz: testQuiz(), Phase: "finished"}
+			room.Quiz.ID, room.Quiz.Title = quiz.ID, "Original title"
+			if err = s.SaveRoom(ctx, room, nil); err != nil {
+				t.Fatal(err)
+			}
+			a, err := newApp(ctx, s, "password")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if a.rooms[room.Code].Quiz.Title != tt.want {
+				t.Fatalf("title = %q, want %q", a.rooms[room.Code].Quiz.Title, tt.want)
+			}
+			persisted, err := s.Rooms(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted[0].Quiz.Title != tt.want || persisted[0].Quiz.Questions[0].Text != "The red planet?" {
+				t.Fatal("startup repair did not preserve the title and original questions")
+			}
+		})
+	}
+}

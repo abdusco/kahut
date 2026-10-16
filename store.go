@@ -94,13 +94,31 @@ PRAGMA user_version=1;`)
 
 func randomID() string { return rand.Text() }
 
-func (s *Store) SaveQuiz(ctx context.Context, q Quiz) error {
+// SaveQuiz also commits title changes to existing games in the same transaction.
+// Their question copies and recorded answers remain unchanged.
+func (s *Store) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Room) error {
 	b, err := json.Marshal(q)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, "INSERT INTO quizzes(id,document) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", q.ID, b)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "INSERT INTO quizzes(id,document) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", q.ID, b); err != nil {
+		return err
+	}
+	for _, room := range renamedRooms {
+		document, err := json.Marshal(room)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE rooms SET document=? WHERE code=?", document, room.Code); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) Quizzes(ctx context.Context) ([]Quiz, error) {

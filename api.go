@@ -47,8 +47,22 @@ func newApp(ctx context.Context, s *Store, password string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	quizzes, err := s.Quizzes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	titles := make(map[string]string, len(quizzes))
+	for _, quiz := range quizzes {
+		titles[quiz.ID] = quiz.Title
+	}
 	for _, r := range rooms {
-		if r.CloseExpired(time.Now().UnixMilli()) {
+		changed := r.CloseExpired(time.Now().UnixMilli())
+		// Older databases retain the original title in each game copy.
+		if title, exists := titles[r.Quiz.ID]; exists && title != r.Quiz.Title {
+			r.Quiz.Title = title
+			changed = true
+		}
+		if changed {
 			r.Sequence++
 			if err = s.SaveRoom(ctx, r, nil); err != nil {
 				return nil, err
@@ -257,6 +271,8 @@ func (a *App) saveQuiz(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if id := r.PathValue("id"); id != "" {
 		if _, err := a.store.Quiz(r.Context(), id); errors.Is(err, sql.ErrNoRows) {
 			writeError(w, 404, "quiz not found")
@@ -269,9 +285,22 @@ func (a *App) saveQuiz(w http.ResponseWriter, r *http.Request) {
 	} else {
 		q.ID = randomID()
 	}
-	if err := a.store.SaveQuiz(r.Context(), q); err != nil {
+	var renamedRooms []Room
+	for _, room := range a.rooms {
+		if room.Quiz.ID == q.ID && room.Quiz.Title != q.Title {
+			room = cloneRoom(room)
+			room.Quiz.Title = q.Title
+			room.Sequence++
+			renamedRooms = append(renamedRooms, room)
+		}
+	}
+	if err := a.store.SaveQuiz(r.Context(), q, renamedRooms); err != nil {
 		a.internal(w, err)
 		return
+	}
+	for _, room := range renamedRooms {
+		a.rooms[room.Code] = room
+		a.publish(room)
 	}
 	writeJSON(w, 200, q)
 }
@@ -322,6 +351,8 @@ func (a *App) createRoom(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &b) {
 		return
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	q, err := a.store.Quiz(r.Context(), b.QuizID)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, 404, "quiz not found")
@@ -331,8 +362,6 @@ func (a *App) createRoom(w http.ResponseWriter, r *http.Request) {
 		a.internal(w, err)
 		return
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	code := randomID()[:8]
 	for {
 		if _, ok := a.rooms[code]; !ok {
