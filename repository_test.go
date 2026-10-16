@@ -17,7 +17,7 @@ func TestRepositorySchemaInitialization(t *testing.T) {
 	}{
 		{"new database", 0},
 		{"older schema", 1},
-		{"newer schema", 3},
+		{"newer schema", 99},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -31,7 +31,7 @@ func TestRepositorySchemaInitialization(t *testing.T) {
 				if tt.version == 1 {
 					_, err = db.Exec("PRAGMA user_version=1")
 				} else {
-					_, err = db.Exec("PRAGMA user_version=3")
+					_, err = db.Exec("PRAGMA user_version=99")
 				}
 				db.Close()
 				if err != nil {
@@ -424,5 +424,73 @@ func TestExistingGameTitlesFollowSavedQuizOnStartup(t *testing.T) {
 				t.Fatal("startup repair did not preserve the title and original questions")
 			}
 		})
+	}
+}
+
+func TestMigrateQuizDocumentsToTables(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "v2.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = migrateToV2(tx); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range [][]string{
+		{"a", "alice", `{"version":1,"title":"First","questions":[{"text":"Q1","choices":["x","y"],"correctIndex":1,"timeLimitSeconds":30}]}`},
+		{"b", "alice", `{"version":1,"title":"Second","questions":[{"text":"Q2","choices":["x","y","z"],"correctIndex":2,"timeLimitSeconds":20},{"text":"Q3","choices":["p","q"],"correctIndex":0,"timeLimitSeconds":5}]}`},
+	} {
+		if _, err = tx.Exec("INSERT INTO quizzes(id,owner,document) VALUES(?,?,?)", row[0], row[1], row[2]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = tx.Exec("PRAGMA user_version=2"); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	repo, err := openRepository(path, "test-signing-key-at-least-32-bytes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+	quizzes, err := repo.Quizzes(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quizzes) != 2 || quizzes[0].ID != "b" || quizzes[1].ID != "a" {
+		t.Fatalf("unexpected quizzes: %+v", quizzes)
+	}
+	second := quizzes[0]
+	if second.Title != "Second" || len(second.Questions) != 2 || second.Questions[0].CorrectIndex != 2 ||
+		strings.Join(second.Questions[0].Choices, ",") != "x,y,z" || second.Questions[1].TimeLimitSeconds != 5 {
+		t.Fatalf("unexpected quiz: %+v", second)
+	}
+	second.Questions = second.Questions[:1]
+	second.Questions[0].Choices = []string{"only", "two"}
+	if err = repo.SaveQuiz(ctx, second, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Quiz(ctx, "b", "alice")
+	if err != nil || len(got.Questions) != 1 || strings.Join(got.Questions[0].Choices, ",") != "only,two" {
+		t.Fatalf("unexpected saved quiz: %+v, %v", got, err)
+	}
+	if _, err = repo.Quiz(ctx, "b", "bob"); !errors.Is(err, ErrQuizNotFound) {
+		t.Fatalf("expected not found, got %v", err)
+	}
+	if err = repo.DeleteQuiz(ctx, "b", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err = repo.db.QueryRow("SELECT (SELECT COUNT(*) FROM questions WHERE quiz_id='b')+(SELECT COUNT(*) FROM choices WHERE quiz_id='b')").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("expected cascade delete, got %d rows, %v", n, err)
 	}
 }
