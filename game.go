@@ -4,16 +4,20 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
 )
+
+var imageIDPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,64}$`)
 
 type Question struct {
 	Text             string   `json:"text"`
 	Choices          []string `json:"choices"`
 	CorrectIndex     int      `json:"correctIndex"`
 	TimeLimitSeconds int      `json:"timeLimitSeconds"`
+	ImageID          string   `json:"imageId,omitempty"`
 }
 
 type Quiz struct {
@@ -49,6 +53,9 @@ func (q *Quiz) Validate() error {
 			if p.Choices[j] == "" || utf8.RuneCountInString(p.Choices[j]) > 300 {
 				return fmt.Errorf("question %d: choices must contain 1–300 characters", i+1)
 			}
+		}
+		if p.ImageID != "" && !imageIDPattern.MatchString(p.ImageID) {
+			return fmt.Errorf("question %d: invalid image", i+1)
 		}
 		if p.TimeLimitSeconds == 0 {
 			p.TimeLimitSeconds = 20

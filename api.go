@@ -159,6 +159,8 @@ func (a *App) routes() http.Handler {
 	e.POST("/api/host/logout", a.logout, host)
 	e.GET("/api/session", a.session, session)
 	e.GET("/api/live", a.live, session)
+	e.POST("/api/images", a.uploadImage, host)
+	e.GET("/api/images/:id", a.image)
 	e.GET("/api/quizzes", a.quizzes, host)
 	e.POST("/api/quizzes", a.saveQuiz, host)
 	e.POST("/api/quizzes/import", a.saveQuiz, host)
@@ -264,6 +266,50 @@ func (a *App) session(c *echo.Context) error {
 	return c.JSON(http.StatusOK, session)
 }
 
+const maxImageBytes = 4 << 20
+
+// Raster formats only: SVG can carry scripts.
+var imageTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+
+func (a *App) uploadImage(c *echo.Context) error {
+	r := c.Request()
+	s, _ := echo.ContextGet[Session](c, "session")
+	data, err := io.ReadAll(http.MaxBytesReader(c.Response(), r.Body, maxImageBytes))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "image must be 4 MB or smaller")
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, "could not read image")
+	}
+	contentType := http.DetectContentType(data)
+	if !imageTypes[contentType] {
+		return echo.NewHTTPError(http.StatusUnsupportedMediaType, "image must be PNG, JPEG, GIF or WebP")
+	}
+	id, err := a.repo.SaveImage(r.Context(), s.Username, contentType, data)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, map[string]string{"id": id})
+}
+
+// image is public because <img> requests cannot send the Authorization header.
+// IDs are random 128-bit values, so only people who were shown a question can
+// know them.
+func (a *App) image(c *echo.Context) error {
+	contentType, data, err := a.repo.Image(c.Request().Context(), c.Param("id"))
+	if errors.Is(err, ErrImageNotFound) {
+		return echo.NewHTTPError(http.StatusNotFound, ErrImageNotFound.Error())
+	}
+	if err != nil {
+		return err
+	}
+	h := c.Response().Header()
+	h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	return c.Blob(http.StatusOK, contentType, data)
+}
+
 func (a *App) quizzes(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
@@ -305,6 +351,9 @@ func (a *App) saveQuiz(c *echo.Context) error {
 		}
 	}
 	if err := a.repo.SaveQuiz(r.Context(), q, renamedRooms); err != nil {
+		if errors.Is(err, ErrImageNotFound) {
+			return echo.NewHTTPError(http.StatusBadRequest, "question image not found; upload it again")
+		}
 		return err
 	}
 	for _, room := range renamedRooms {
@@ -331,6 +380,10 @@ func (a *App) readQuiz(c *echo.Context, export bool) error {
 	}
 	if export {
 		q.ID = ""
+		// Image IDs only work for their owner, so exports omit them.
+		for i := range q.Questions {
+			q.Questions[i].ImageID = ""
+		}
 		c.Response().Header().Set("Content-Disposition", `attachment; filename="quiz.json"`)
 	}
 	return c.JSON(http.StatusOK, q)

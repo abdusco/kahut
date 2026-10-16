@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,7 @@ type Repository struct {
 var (
 	ErrQuizNotFound    = errors.New("quiz not found")
 	ErrSessionNotFound = errors.New("session not found")
+	ErrImageNotFound   = errors.New("image not found")
 	ErrInvalidSession  = errors.New("invalid session")
 	ErrSessionExpired  = errors.New("session expired")
 )
@@ -75,7 +77,7 @@ func openRepository(path, signingKey string) (*Repository, error) {
 	return repo, nil
 }
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 // migrations[i] upgrades the schema from version i+1 to i+2. A new database
 // starts at version 0 and runs the first migration, which creates version 2.
@@ -83,6 +85,7 @@ var migrations = []func(tx *sql.Tx) error{
 	migrateToV2,
 	migrateToV3,
 	migrateToV4,
+	migrateToV5,
 }
 
 func migrate(db *sql.DB, version int) error {
@@ -169,11 +172,28 @@ CREATE TABLE choices (
 		if _, err = tx.Exec("INSERT INTO quizzes(id,owner,version,title) VALUES(?,?,?,?)", q.ID, q.Owner, q.Version, q.Title); err != nil {
 			return err
 		}
-		if err = insertQuestions(context.Background(), tx, q); err != nil {
+		if err = insertQuestionsV3(context.Background(), tx, q); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// migrateToV5 adds image storage. Images are immutable and referenced by
+// quiz questions and by the question copies kept in rooms.
+func migrateToV5(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+CREATE TABLE images (
+	id TEXT PRIMARY KEY,
+	owner TEXT NOT NULL,
+	content_type TEXT NOT NULL,
+	data BLOB NOT NULL,
+	created_at INTEGER NOT NULL
+);
+CREATE INDEX images_owner ON images(owner);
+ALTER TABLE questions ADD COLUMN image_id TEXT REFERENCES images(id);
+ALTER TABLE room_questions ADD COLUMN image_id TEXT REFERENCES images(id);`)
+	return err
 }
 
 // migrateToV4 replaces the room and answer JSON documents with relational
@@ -258,7 +278,7 @@ CREATE TABLE answers (
 	}
 	ctx := context.Background()
 	for _, r := range rooms {
-		if err = insertRoom(ctx, tx, r); err != nil {
+		if err = insertRoomV4(ctx, tx, r); err != nil {
 			return err
 		}
 		if err = upsertPlayers(ctx, tx, r); err != nil {
@@ -273,15 +293,12 @@ CREATE TABLE answers (
 	return nil
 }
 
-func insertRoom(ctx context.Context, tx *sql.Tx, r Room) error {
+// insertRoomV4 is frozen at the schema used by migrateToV4.
+func insertRoomV4(ctx context.Context, tx *sql.Tx, r Room) error {
 	if _, err := tx.ExecContext(ctx, "INSERT INTO rooms(code,owner,quiz_id,quiz_version,quiz_title,phase,question,revision,sequence,started_at,deadline,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
 		r.Code, r.Owner, r.Quiz.ID, r.Quiz.Version, r.Quiz.Title, r.Phase, r.Question, r.Revision, r.Sequence, r.StartedAt, r.Deadline, r.CreatedAt); err != nil {
 		return err
 	}
-	return insertRoomQuestions(ctx, tx, r)
-}
-
-func insertRoomQuestions(ctx context.Context, tx *sql.Tx, r Room) error {
 	for i, p := range r.Quiz.Questions {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO room_questions(room_code,position,text,correct_index,time_limit_seconds) VALUES(?,?,?,?,?)", r.Code, i, p.Text, p.CorrectIndex, p.TimeLimitSeconds); err != nil {
 			return err
@@ -293,6 +310,41 @@ func insertRoomQuestions(ctx context.Context, tx *sql.Tx, r Room) error {
 		}
 	}
 	return nil
+}
+
+func insertRoomQuestions(ctx context.Context, tx *sql.Tx, r Room) error {
+	for i, p := range r.Quiz.Questions {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO room_questions(room_code,position,text,correct_index,time_limit_seconds,image_id) VALUES(?,?,?,?,?,?)", r.Code, i, p.Text, p.CorrectIndex, p.TimeLimitSeconds, nullable(p.ImageID)); err != nil {
+			return err
+		}
+		for j, c := range p.Choices {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO room_choices(room_code,question_position,position,text) VALUES(?,?,?,?)", r.Code, i, j, c); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func insertQuestions(ctx context.Context, tx *sql.Tx, q Quiz) error {
+	for i, p := range q.Questions {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO questions(quiz_id,position,text,correct_index,time_limit_seconds,image_id) VALUES(?,?,?,?,?,?)", q.ID, i, p.Text, p.CorrectIndex, p.TimeLimitSeconds, nullable(p.ImageID)); err != nil {
+			return err
+		}
+		for j, c := range p.Choices {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO choices(quiz_id,question_position,position,text) VALUES(?,?,?,?)", q.ID, i, j, c); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func upsertPlayers(ctx context.Context, tx *sql.Tx, r Room) error {
@@ -309,7 +361,8 @@ func insertAnswer(ctx context.Context, tx *sql.Tx, room string, a Answer) error 
 	return err
 }
 
-func insertQuestions(ctx context.Context, tx *sql.Tx, q Quiz) error {
+// insertQuestionsV3 is frozen at the schema used by migrateToV3.
+func insertQuestionsV3(ctx context.Context, tx *sql.Tx, q Quiz) error {
 	for i, p := range q.Questions {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO questions(quiz_id,position,text,correct_index,time_limit_seconds) VALUES(?,?,?,?,?)", q.ID, i, p.Text, p.CorrectIndex, p.TimeLimitSeconds); err != nil {
 			return err
@@ -348,6 +401,19 @@ func (repo *Repository) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Roo
 	if count == 0 {
 		return ErrQuizNotFound
 	}
+	for _, p := range q.Questions {
+		if p.ImageID == "" {
+			continue
+		}
+		var found int
+		err = tx.QueryRowContext(ctx, "SELECT 1 FROM images WHERE id=? AND owner=?", p.ImageID, q.Owner).Scan(&found)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrImageNotFound
+		}
+		if err != nil {
+			return err
+		}
+	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM questions WHERE quiz_id=?", q.ID); err != nil {
 		return err
 	}
@@ -359,7 +425,11 @@ func (repo *Repository) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Roo
 			return err
 		}
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	repo.pruneImages(ctx)
+	return nil
 }
 
 // AllQuizzes is used when restoring room titles at server startup.
@@ -409,7 +479,7 @@ func (repo *Repository) loadQuizzes(ctx context.Context, where string, args ...a
 		return out, nil
 	}
 	subquery := "SELECT id FROM quizzes WHERE " + where
-	questions, err := repo.db.QueryContext(ctx, "SELECT quiz_id,text,correct_index,time_limit_seconds FROM questions WHERE quiz_id IN ("+subquery+") ORDER BY quiz_id,position", args...)
+	questions, err := repo.db.QueryContext(ctx, "SELECT quiz_id,text,correct_index,time_limit_seconds,COALESCE(image_id,'') FROM questions WHERE quiz_id IN ("+subquery+") ORDER BY quiz_id,position", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +487,7 @@ func (repo *Repository) loadQuizzes(ctx context.Context, where string, args ...a
 	for questions.Next() {
 		var id string
 		p := Question{Choices: []string{}}
-		if err = questions.Scan(&id, &p.Text, &p.CorrectIndex, &p.TimeLimitSeconds); err != nil {
+		if err = questions.Scan(&id, &p.Text, &p.CorrectIndex, &p.TimeLimitSeconds, &p.ImageID); err != nil {
 			return nil, err
 		}
 		q := &out[byID[id]]
@@ -456,6 +526,7 @@ func (repo *Repository) DeleteQuiz(ctx context.Context, id, owner string) error 
 	if count == 0 {
 		return ErrQuizNotFound
 	}
+	repo.pruneImages(ctx)
 	return nil
 }
 
@@ -518,7 +589,7 @@ func (repo *Repository) Rooms(ctx context.Context) ([]Room, error) {
 	}
 	rows.Close()
 
-	questions, err := repo.db.QueryContext(ctx, "SELECT room_code,text,correct_index,time_limit_seconds FROM room_questions ORDER BY room_code,position")
+	questions, err := repo.db.QueryContext(ctx, "SELECT room_code,text,correct_index,time_limit_seconds,COALESCE(image_id,'') FROM room_questions ORDER BY room_code,position")
 	if err != nil {
 		return nil, err
 	}
@@ -526,7 +597,7 @@ func (repo *Repository) Rooms(ctx context.Context) ([]Room, error) {
 	for questions.Next() {
 		var code string
 		p := Question{Choices: []string{}}
-		if err = questions.Scan(&code, &p.Text, &p.CorrectIndex, &p.TimeLimitSeconds); err != nil {
+		if err = questions.Scan(&code, &p.Text, &p.CorrectIndex, &p.TimeLimitSeconds, &p.ImageID); err != nil {
 			return nil, err
 		}
 		r := &out[byCode[code]]
@@ -590,6 +661,34 @@ func (repo *Repository) Rooms(ctx context.Context) ([]Room, error) {
 		r.Answers = append(r.Answers, a)
 	}
 	return out, answers.Err()
+}
+
+// SaveImage stores an uploaded image and returns its unguessable ID.
+func (repo *Repository) SaveImage(ctx context.Context, owner, contentType string, data []byte) (string, error) {
+	id := randomID()
+	_, err := repo.db.ExecContext(ctx, "INSERT INTO images(id,owner,content_type,data,created_at) VALUES(?,?,?,?,?)", id, owner, contentType, data, time.Now().UnixMilli())
+	return id, err
+}
+
+func (repo *Repository) Image(ctx context.Context, id string) (contentType string, data []byte, err error) {
+	err = repo.db.QueryRowContext(ctx, "SELECT content_type,data FROM images WHERE id=?", id).Scan(&contentType, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrImageNotFound
+	}
+	return
+}
+
+// pruneImages removes images that no quiz or game uses. Recent uploads are kept
+// because the editor uploads before the quiz is saved. Failures are only
+// logged: a leftover image is harmless.
+func (repo *Repository) pruneImages(ctx context.Context) {
+	cutoff := time.Now().Add(-24 * time.Hour).UnixMilli()
+	_, err := repo.db.ExecContext(ctx, `DELETE FROM images WHERE created_at<? AND id NOT IN (
+SELECT image_id FROM questions WHERE image_id IS NOT NULL
+UNION SELECT image_id FROM room_questions WHERE image_id IS NOT NULL)`, cutoff)
+	if err != nil {
+		log.Printf("prune images failed: %v", err)
+	}
 }
 
 type Session struct {
