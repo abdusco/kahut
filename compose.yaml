@@ -1,3 +1,5 @@
+# Generate a signing key once and reuse it across restarts:
+#   python3 -c "import secrets; print(secrets.token_hex(32))"
 services:
   kahut:
     build: .
