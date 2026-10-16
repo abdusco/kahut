@@ -566,6 +566,8 @@ main > section[hidden] {
 }
 .outline.danger {
   border-color: color-mix(in srgb, #ca4656 45%, var(--line));
+  /* Match the primary button's 4px lip so bottom edges line up. */
+  box-shadow: 0 4px 0 color-mix(in srgb, #ca4656 45%, var(--line));
 }
 .outline.danger:hover {
   background: color-mix(in srgb, #ca4656 10%, var(--panel));
@@ -590,8 +592,6 @@ main > section[hidden] {
 }
 .lobby-actions .danger {
   flex: 0 0 auto;
-  /* Match the primary button's 4px lip so both bottom edges line up. */
-  box-shadow: 0 4px 0 color-mix(in srgb, #ca4656 45%, var(--line));
 }
 .wide.quiet,
 .wide.outline {
@@ -1279,6 +1279,7 @@ main > section[hidden] {
 .host-controls {
   display: flex;
   justify-content: flex-end;
+  gap: 12px;
   margin: 20px 0;
 }
 .result-stamp {

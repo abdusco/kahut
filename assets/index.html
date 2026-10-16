@@ -664,6 +664,12 @@
               x-show="isHost && (state.phase==='question' || state.phase==='results' || state.phase==='leaderboard')"
             >
               <button
+                class="outline danger"
+                :disabled="!ready || busy"
+                @click="finishGame()"
+                x-text="t('endGame')"
+              ></button
+              ><button
                 class="primary"
                 x-show="state.phase==='question'"
                 :disabled="!ready || busy"
@@ -685,17 +691,9 @@
                 x-text="state.questionIndex+1===state.questionCount ? t('showPodium') : t('nextQuestion')"
               ></button>
             </div>
-            <div class="room-footer">
+            <div class="room-footer" x-show="state.phase==='finished'">
               <button
-                class="outline danger small"
-                x-show="isHost && state.phase!=='lobby' && state.phase!=='finished'"
-                :disabled="!ready || busy"
-                @click="finishGame()"
-                x-text="t('endGame')"
-              ></button
-              ><button
                 class="outline"
-                x-show="state.phase==='finished'"
                 @click="isHost ? backToLibrary() : home()"
                 x-text="isHost ? t('backToLibrary') : t('playAgain')"
               ></button>
