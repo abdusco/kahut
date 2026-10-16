@@ -885,7 +885,7 @@ main > section[hidden] {
   flex-wrap: wrap;
 }
 .image-editor {
-  margin-top: 10px;
+  margin: 12px 0;
 }
 .image-drop {
   display: flex;
@@ -898,13 +898,14 @@ main > section[hidden] {
 }
 .image-preview {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: 8px;
 }
 .image-preview img {
   display: block;
   max-width: 100%;
-  max-height: 220px;
+  max-height: 140px;
   border-radius: 12px;
   border: 1px solid var(--line);
 }
