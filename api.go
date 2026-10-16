@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 	"github.com/labstack/echo/v5"
@@ -39,6 +40,8 @@ type App struct {
 	rooms   map[string]Room
 	streams map[*stream]bool
 	ai      *openRouter // nil when image generation is not configured
+
+	generating map[string]bool // owners with a generation in flight; guarded by mu
 }
 
 func newApp(ctx context.Context, s *Repository, authUsers string) (*App, error) {
@@ -46,7 +49,7 @@ func newApp(ctx context.Context, s *Repository, authUsers string) (*App, error) 
 	if err != nil {
 		return nil, err
 	}
-	a := &App{ctx: ctx, repo: s, users: users, rooms: map[string]Room{}, streams: map[*stream]bool{}}
+	a := &App{ctx: ctx, repo: s, users: users, rooms: map[string]Room{}, streams: map[*stream]bool{}, generating: map[string]bool{}}
 	rooms, err := s.Rooms(ctx)
 	if err != nil {
 		return nil, err
@@ -162,6 +165,8 @@ func (a *App) routes() http.Handler {
 	e.GET("/api/live", a.live, session)
 	e.POST("/api/images", a.uploadImage, host)
 	e.GET("/api/images/:id", a.image)
+	e.GET("/api/ai/status", a.aiStatus, host)
+	e.POST("/api/ai/images", a.generateImage, host)
 	e.GET("/api/quizzes", a.quizzes, host)
 	e.POST("/api/quizzes", a.saveQuiz, host)
 	e.POST("/api/quizzes/import", a.saveQuiz, host)
@@ -283,15 +288,68 @@ func (a *App) uploadImage(c *echo.Context) error {
 		}
 		return echo.NewHTTPError(http.StatusBadRequest, "could not read image")
 	}
+	return a.storeImage(c, s.Username, data)
+}
+
+// storeImage validates the bytes and saves them for owner.
+func (a *App) storeImage(c *echo.Context, owner string, data []byte) error {
 	contentType := http.DetectContentType(data)
 	if !imageTypes[contentType] {
 		return echo.NewHTTPError(http.StatusUnsupportedMediaType, "image must be PNG, JPEG, GIF or WebP")
 	}
-	id, err := a.repo.SaveImage(r.Context(), s.Username, contentType, data)
+	id, err := a.repo.SaveImage(c.Request().Context(), owner, contentType, data)
 	if err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, map[string]string{"id": id})
+}
+
+const maxPromptRunes = 2000
+
+func (a *App) aiStatus(c *echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]bool{"enabled": a.ai != nil})
+}
+
+func (a *App) generateImage(c *echo.Context) error {
+	if a.ai == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "image generation is not configured")
+	}
+	s, _ := echo.ContextGet[Session](c, "session")
+	var b struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := echo.BindBody(c, &b); err != nil {
+		return err
+	}
+	prompt := strings.TrimSpace(b.Prompt)
+	if prompt == "" || utf8.RuneCountInString(prompt) > maxPromptRunes {
+		return echo.NewHTTPError(http.StatusBadRequest, "prompt must be 1 to 2000 characters")
+	}
+	// One generation per host at a time: the key is shared and calls cost money.
+	a.mu.Lock()
+	busy := a.generating[s.Username]
+	a.generating[s.Username] = true
+	a.mu.Unlock()
+	if busy {
+		return echo.NewHTTPError(http.StatusTooManyRequests, "an image is already being generated")
+	}
+	defer func() {
+		a.mu.Lock()
+		delete(a.generating, s.Username)
+		a.mu.Unlock()
+	}()
+	data, err := a.ai.Generate(c.Request().Context(), prompt)
+	if err != nil {
+		log.Printf("image generation failed: %v", err)
+		switch {
+		case errors.Is(err, errAIRateLimit):
+			return echo.NewHTTPError(http.StatusTooManyRequests, errAIRateLimit.Error())
+		case errors.Is(err, errAINoImage), errors.Is(err, errAIImageLarge):
+			return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, errAIUpstream.Error())
+	}
+	return a.storeImage(c, s.Username, data)
 }
 
 // image is public because <img> requests cannot send the Authorization header.
