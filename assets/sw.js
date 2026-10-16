@@ -1,6 +1,6 @@
 // Existing tabs keep their current worker until they close. This prevents a new
 // worker from serving a different shell version beneath an already-running app.
-const CACHE = 'kahut-shell-v26';
+const CACHE = 'kahut-shell-v27';
 const SHELL = [
   '/',
   '/style.css',

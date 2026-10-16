@@ -645,6 +645,17 @@ main > section[hidden] {
   border: 1px solid #cb466455;
   color: var(--ink);
 }
+.notice.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: min(640px, calc(100vw - 32px));
+  margin: 0;
+  background: var(--panel);
+  box-shadow: 0 12px 40px #0003;
+}
 .import-dialog {
   width: min(820px, calc(100vw - 32px));
   max-height: calc(100svh - 40px);
