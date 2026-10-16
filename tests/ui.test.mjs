@@ -51,6 +51,13 @@ test(
       host.on('pageerror', (error) => errors.push(error.message));
       player.on('pageerror', (error) => errors.push(error.message));
       await host.goto(base);
+      assert.equal(await host.locator('header select').count(), 0);
+      await host.getByRole('button', { name: 'Settings', exact: true }).click();
+      const settings = host.getByRole('dialog', { name: 'Settings', exact: true });
+      await settings.getByLabel('Appearance').selectOption('light');
+      assert.equal(await host.locator('html').getAttribute('data-theme'), 'light');
+      await settings.getByRole('button', { name: 'Dismiss', exact: true }).click();
+      await settings.waitFor({ state: 'hidden' });
       await host.getByRole('button', { name: 'Host a game', exact: true }).click();
       await host.getByLabel('Host password').fill('browser-test-password');
       await host.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -93,8 +100,21 @@ test(
       await player.getByLabel('Your nickname').fill('Ada');
       await player.getByRole('button', { name: 'Join a game →', exact: true }).click();
       await host.getByRole('button', { name: 'Start the game →', exact: true }).click();
+      await player.getByRole('heading', { name: 'What does Hut mean?' }).waitFor();
+      assert.equal(await player.locator('.stage-scoreboard').isVisible(), false);
       await player.getByRole('button', { name: '▲ Hat', exact: true }).click();
+      await player.locator('.personal-result').waitFor();
+      assert.equal(await player.locator('.stage-scoreboard').isVisible(), false);
+      assert.equal(
+        await player.getByRole('heading', { name: 'What does Hut mean?' }).isVisible(),
+        true,
+      );
       await host.getByRole('button', { name: 'Show leaderboard →', exact: true }).click();
+      await player
+        .getByRole('heading', { name: 'The leaderboard', exact: true })
+        .waitFor();
+      await player.locator('.question-stage').waitFor({ state: 'hidden' });
+      assert.equal(await player.locator('.personal-standing').isVisible(), true);
       await host
         .getByRole('button', { name: 'Reveal the podium →', exact: true })
         .click();

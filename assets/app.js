@@ -97,6 +97,7 @@ export function quizApp() {
     now: Date.now(),
     serverOffset: 0,
     installPrompt: null,
+    menuOpen: false,
     get remaining() {
       return this.state
         ? Math.max(
@@ -122,6 +123,9 @@ export function quizApp() {
     },
     get eligibleCount() {
       return this.state?.eligibleCount || 0;
+    },
+    get myStanding() {
+      return this.state?.players.find((player) => player.id === this.state.playerId);
     },
     get aiPrompt() {
       return quizPrompt(this.language);
@@ -443,6 +447,10 @@ export function quizApp() {
         await this.loadLibrary();
         this.message = this.t('saved');
       });
+    },
+    openSettings() {
+      this.$refs.settingsDialog.showModal();
+      this.menuOpen = true;
     },
     openImport() {
       this.importText = '';

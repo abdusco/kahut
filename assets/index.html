@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#5536d9" />
+    <meta name="theme-color" content="#6943ed" />
     <meta
       name="description"
       content="A little friendly competition. Host a quiz, join your friends, and climb the leaderboard."
@@ -30,22 +30,6 @@
       >
       <nav class="preferences" aria-label="Preferences">
         <button
-          class="small quiet"
-          x-show="installPrompt"
-          x-cloak
-          @click="install()"
-          x-text="t('install')"
-        ></button>
-        <select aria-label="Language" x-model="language" @change="savePreferences()">
-          <option value="en">EN</option>
-          <option value="tr">TR</option>
-        </select>
-        <select :aria-label="t('theme')" x-model="theme" @change="savePreferences()">
-          <option value="system" x-text="t('system')"></option>
-          <option value="light" x-text="t('light')"></option>
-          <option value="dark" x-text="t('dark')"></option>
-        </select>
-        <button
           class="quiet small"
           x-show="hostToken"
           x-cloak
@@ -53,6 +37,18 @@
           @click="logout()"
           x-text="t('signOut')"
         ></button>
+        <button
+          class="menu-toggle"
+          @click="openSettings()"
+          :aria-label="t('settings')"
+          aria-haspopup="dialog"
+          aria-controls="settings-dialog"
+          :aria-expanded="menuOpen"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
       </nav>
     </header>
     <main x-cloak>
@@ -67,7 +63,7 @@
 
       <section x-show="view === 'home'" class="home-grid">
         <div class="hero">
-          <span class="eyebrow"
+          <span class="eyebrow hero-badge"
             ><span class="live-dot"></span> <span x-text="t('heroTag')"></span
           ></span>
           <h1>
@@ -88,7 +84,10 @@
         </div>
         <div class="join-stack">
           <form class="panel join-panel" @submit.prevent="join()">
-            <div class="section-number">01 / <span x-text="t('letsPlay')"></span></div>
+            <div class="join-heading">
+              <span class="join-icon" aria-hidden="true">↗</span
+              ><span class="eyebrow" x-text="t('letsPlay')"></span>
+            </div>
             <h2 x-text="t('joinGame')"></h2>
             <p class="muted" x-text="t('joinCopy')"></p>
             <label for="room-code" x-text="t('roomCode')"></label
@@ -428,6 +427,11 @@
                 <div class="player-chips">
                   <template x-for="p in state.players" :key="p.id"
                     ><div class="player-chip">
+                      <span
+                        class="avatar"
+                        aria-hidden="true"
+                        x-text="p.name.slice(0,1).toUpperCase()"
+                      ></span>
                       <span class="presence" :class="{'online':p.online}"></span
                       ><strong x-text="p.name"></strong
                       ><span
@@ -447,7 +451,11 @@
                 <p class="waiting-label" x-show="!isHost" x-text="t('waitingHost')"></p>
               </div>
             </div>
-            <div x-show="state.phase !== 'lobby'">
+            <div
+              class="question-stage"
+              x-show="state.phase==='question' || state.phase==='results'"
+              x-transition.opacity.duration.200ms
+            >
               <div class="question-meta">
                 <span class="eyebrow"
                   ><span x-text="t('question')"></span>
@@ -460,7 +468,16 @@
               <div class="timer-track" x-show="state.phase==='question'">
                 <div :style="'width:'+timePercent+'%'"></div>
               </div>
-              <div class="panel question-panel">
+              <div
+                class="panel question-panel"
+                :class="{'showing-results':state.phase==='results'}"
+              >
+                <div
+                  class="result-stamp"
+                  x-show="state.phase==='results'"
+                  aria-hidden="true"
+                  x-text="!isHost && state.myPoints>0 ? '✓' : '✦'"
+                ></div>
                 <h2 x-text="state.question?.text"></h2>
                 <p
                   class="answer-status"
@@ -494,40 +511,45 @@
                     x-text="state.myChoice===state.question?.correctIndex ? t('niceWork') : t('nextTime')"
                   ></span>
                 </div>
-              </div>
-              <div class="host-controls" x-show="isHost">
-                <button
-                  class="primary"
-                  x-show="state.phase==='question'"
-                  :disabled="!ready || busy"
-                  @click="act('close')"
-                  x-text="t('closeQuestion')"
-                ></button
-                ><button
-                  class="primary"
-                  x-show="state.phase==='results'"
-                  :disabled="!ready || busy"
-                  @click="act('leaderboard')"
-                  x-text="t('showLeaderboard')"
-                ></button
-                ><button
-                  class="primary"
-                  x-show="state.phase==='leaderboard'"
-                  :disabled="!ready || busy"
-                  @click="act('next')"
-                  x-text="state.questionIndex+1===state.questionCount ? t('showPodium') : t('nextQuestion')"
-                ></button>
+                <p
+                  class="waiting-label result-waiting"
+                  x-show="!isHost && state.phase==='results'"
+                  x-text="t('waitingLeaderboard')"
+                ></p>
               </div>
             </div>
-            <div class="panel scoreboard" x-show="state.phase !== 'lobby'">
-              <span
-                class="eyebrow"
-                x-show="state.phase==='finished'"
-                x-text="t('thatsAWrap')"
-              ></span>
-              <h2
-                x-text="state.phase==='finished' ? t('podium') : t('leaderboardTitle')"
-              ></h2>
+            <div
+              class="panel scoreboard stage-scoreboard"
+              x-show="state.phase==='leaderboard' || state.phase==='finished'"
+              x-transition.opacity.duration.200ms
+              aria-live="polite"
+            >
+              <div class="board-heading">
+                <span
+                  class="board-icon"
+                  aria-hidden="true"
+                  x-text="state.phase==='finished' ? '★' : '↗'"
+                ></span>
+                <span
+                  class="eyebrow"
+                  x-text="state.phase==='finished' ? t('thatsAWrap') : t('roundLeaders')"
+                ></span>
+                <h2
+                  x-text="state.phase==='finished' ? t('podium') : t('leaderboardTitle')"
+                ></h2>
+                <p
+                  class="muted"
+                  x-show="state.phase==='leaderboard'"
+                  x-text="t('leaderboardCopy')"
+                ></p>
+                <div class="personal-standing" x-show="!isHost && myStanding">
+                  <span x-text="t('yourPlace')"></span
+                  ><strong x-text="'#'+myStanding?.rank"></strong
+                  ><span
+                    x-text="(myStanding?.score || 0).toLocaleString(language)+' '+t('points')"
+                  ></span>
+                </div>
+              </div>
               <div class="podium" x-show="state.phase==='finished'">
                 <template x-for="p in state.players.slice(0,3)" :key="p.id"
                   ><div class="podium-person" :class="'place-'+p.rank">
@@ -539,6 +561,11 @@
               <template x-for="p in state.players" :key="p.id"
                 ><div class="score-row" :class="{'my-row':p.id===state.playerId}">
                   <span class="rank" x-text="String(p.rank).padStart(2,'0')"></span
+                  ><span
+                    class="avatar"
+                    aria-hidden="true"
+                    x-text="p.name.slice(0,1).toUpperCase()"
+                  ></span
                   ><span class="presence" :class="{'online':p.online}"></span
                   ><strong x-text="p.name"></strong
                   ><span
@@ -547,14 +574,41 @@
                     x-text="t('you')"
                   ></span
                   ><span
-                    class="muted small-text"
-                    x-show="state.phase==='question' && p.answered"
-                    >✓</span
-                  ><span
                     class="score"
                     x-text="p.score.toLocaleString(language)"
                   ></span></div
               ></template>
+              <p
+                class="waiting-label"
+                x-show="!isHost && state.phase==='leaderboard'"
+                x-text="t('waitingNextQuestion')"
+              ></p>
+            </div>
+            <div
+              class="host-controls"
+              x-show="isHost && (state.phase==='question' || state.phase==='results' || state.phase==='leaderboard')"
+            >
+              <button
+                class="primary"
+                x-show="state.phase==='question'"
+                :disabled="!ready || busy"
+                @click="act('close')"
+                x-text="t('closeQuestion')"
+              ></button
+              ><button
+                class="primary"
+                x-show="state.phase==='results'"
+                :disabled="!ready || busy"
+                @click="act('leaderboard')"
+                x-text="t('showLeaderboard')"
+              ></button
+              ><button
+                class="primary"
+                x-show="state.phase==='leaderboard'"
+                :disabled="!ready || busy"
+                @click="act('next')"
+                x-text="state.questionIndex+1===state.questionCount ? t('showPodium') : t('nextQuestion')"
+              ></button>
             </div>
             <div class="room-footer">
               <button
@@ -614,6 +668,48 @@
         ></template>
       </section>
     </main>
+    <dialog
+      id="settings-dialog"
+      class="settings-dialog"
+      x-ref="settingsDialog"
+      aria-labelledby="settings-heading"
+      @close="menuOpen=false"
+      @click="if($event.target===$el) $el.close()"
+    >
+      <div class="settings-content">
+        <div class="dialog-heading">
+          <h2 id="settings-heading" x-text="t('settings')"></h2>
+          <button
+            class="quiet"
+            @click="$refs.settingsDialog.close()"
+            :aria-label="t('dismiss')"
+          >
+            ×
+          </button>
+        </div>
+        <label for="language-select" x-text="t('languageLabel')"></label>
+        <div class="select-control">
+          <select id="language-select" x-model="language" @change="savePreferences()">
+            <option value="en">English</option>
+            <option value="tr">Türkçe</option></select
+          ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+        </div>
+        <label for="theme-select" x-text="t('theme')"></label>
+        <div class="select-control">
+          <select id="theme-select" x-model="theme" @change="savePreferences()">
+            <option value="system" x-text="t('system')"></option>
+            <option value="light" x-text="t('light')"></option>
+            <option value="dark" x-text="t('dark')"></option></select
+          ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+        </div>
+        <button
+          class="outline wide"
+          x-show="installPrompt"
+          @click="install()"
+          x-text="t('install')"
+        ></button>
+      </div>
+    </dialog>
     <dialog
       class="import-dialog"
       x-ref="importDialog"

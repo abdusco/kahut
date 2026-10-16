@@ -16,9 +16,9 @@ Configuration: `PORT` (default `8080`), `ADDR` (used when `PORT` is unset), `DB_
 
 API requests support all origins, including `Authorization`/JSON preflights, and authenticated WebSocket connections accept tunnel origins even when the proxy rewrites `Host`. Start the app locally, then point cloudflared or ngrok at `http://localhost:8080` and open the public HTTPS URL. Invitations and live connections use that public origin automatically. Authentication still requires the host password or a player session token; cookie-based credentials are not used.
 
-Questions have 2–4 choices, one correct answer, and a 5–120 second timer. Correct answers earn 500–1,000 points based on server receipt time; wrong or missing answers earn zero. Hosts advance through results and leaderboards. Late joiners wait for the next question. Interrupted questions retain their original deadlines.
+Questions have 2–4 choices, one correct answer, and a 5–120 second timer. Correct answers earn 500–1,000 points based on server receipt time; wrong or missing answers earn zero. Players first see answer feedback; the host’s **Show leaderboard** action switches everyone to a dedicated ranking screen, and **Next question** returns them to the quiz. Late joiners wait for the next question. Interrupted questions retain their original deadlines.
 
-The app supports English/Turkish, light/dark/system themes, and installation as a PWA. The offline shell opens without a network, but gameplay and quiz editing require the server. A root visit opens home; invitation links and installed launches can restore a saved session.
+The app supports English/Turkish, light/dark/system themes, and installation as a PWA. Language and appearance controls live in the Settings side menu. The offline shell opens without a network, but gameplay and quiz editing require the server. A root visit opens home; invitation links and installed launches can restore a saved session.
 
 ## Quiz JSON
 
