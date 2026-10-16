@@ -245,7 +245,13 @@ select {
   backdrop-filter: blur(3px);
 }
 .settings-content {
+  display: flex;
+  flex-direction: column;
   min-height: 100%;
+}
+.settings-spacer {
+  flex: 1;
+  min-height: 26px;
 }
 .settings-dialog select {
   width: 100%;
