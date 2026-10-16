@@ -86,8 +86,10 @@ Use **Export** to save a quiz, or **Import JSON** to load one. You can paste tex
 ## Deploy
 
 ```sh
-AUTH_USERS='["alice:choose-a-password"]' docker compose up --build -d
+AUTH_USERS='["alice:choose-a-password"]' docker compose up -d
 ```
+
+This pulls `ghcr.io/abdusco/kahut`. To build from source instead, run `docker build -t ghcr.io/abdusco/kahut:v0.1 .` first.
 
 - Set `HOST_PORT` to change the published port. The database lives in the `kahut-data` volume.
 - Run one process per database. Replicas are not supported.
