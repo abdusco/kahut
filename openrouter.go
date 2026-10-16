@@ -7,6 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"math/rand/v2"
 	"net/http"
@@ -101,5 +106,37 @@ func (o *openRouter) Generate(ctx context.Context, prompt string) ([]byte, error
 	if len(data) > maxImageBytes {
 		return nil, errAIImageLarge
 	}
-	return data, nil
+	return pngToJPEG(data), nil
+}
+
+const (
+	jpegQuality  = 85
+	maxPNGPixels = 16 << 20
+	pngSignature = "\x89PNG\r\n\x1a\n"
+)
+
+// pngToJPEG re-encodes PNG data as JPEG, which is several times smaller for
+// generated pictures. Transparent areas become white. Other formats, and PNGs
+// that fail to decode or would not get smaller, are returned unchanged.
+func pngToJPEG(data []byte) []byte {
+	if !bytes.HasPrefix(data, []byte(pngSignature)) {
+		return data
+	}
+	// Check the size before decoding so a huge canvas cannot exhaust memory.
+	cfg, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width*cfg.Height > maxPNGPixels {
+		return data
+	}
+	src, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return data
+	}
+	canvas := image.NewRGBA(src.Bounds())
+	draw.Draw(canvas, canvas.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
+	draw.Draw(canvas, canvas.Bounds(), src, src.Bounds().Min, draw.Over)
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, canvas, &jpeg.Options{Quality: jpegQuality}); err != nil || out.Len() >= len(data) {
+		return data
+	}
+	return out.Bytes()
 }
