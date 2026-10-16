@@ -843,6 +843,9 @@ main {
 .history-heading {
   margin-top: 50px;
 }
+.history-empty {
+  margin: 0;
+}
 .history-row {
   display: flex;
   justify-content: space-between;

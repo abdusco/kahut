@@ -243,7 +243,7 @@
           ></button>
         </div>
         <div class="panel">
-          <p class="muted" x-show="!games.length" x-text="t('noGames')"></p>
+          <p class="muted history-empty" x-show="!games.length" x-text="t('noGames')"></p>
           <template x-for="game in games" :key="game.code"
             ><div class="history-row">
               <div>
