@@ -61,6 +61,12 @@ test(
       await host.getByRole('button', { name: 'Host a game', exact: true }).click();
       await host.getByLabel('Host password').fill('browser-test-password');
       await host.getByRole('button', { name: 'Sign in', exact: true }).click();
+      await host.waitForURL(`${base}/host`);
+      await host.reload();
+      await host
+        .getByRole('heading', { name: 'Your quiz collection.', exact: true })
+        .waitFor();
+      assert.equal(new URL(host.url()).pathname, '/host');
       await host.getByRole('button', { name: 'Import JSON', exact: true }).click();
       const dialog = host.getByRole('dialog');
       assert.equal(await dialog.isVisible(), true);

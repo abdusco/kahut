@@ -1,6 +1,6 @@
 // Existing tabs keep their current worker until they close. This prevents a new
 // worker from serving a different shell version beneath an already-running app.
-const CACHE = 'kahut-shell-v8';
+const CACHE = 'kahut-shell-v9';
 const SHELL = [
   '/',
   '/style.css',
@@ -40,7 +40,10 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/api/')
   )
     return;
-  const path = request.mode === 'navigate' && url.pathname === '/' ? '/' : url.pathname;
+  const path =
+    request.mode === 'navigate' && ['/', '/host'].includes(url.pathname)
+      ? '/'
+      : url.pathname;
   if (!SHELL.includes(path)) return;
   event.respondWith(
     caches.open(CACHE).then(async (cache) => (await cache.match(path)) || fetch(request)),

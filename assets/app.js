@@ -203,6 +203,10 @@ export function quizApp() {
       this.token = '';
       this.isHost = false;
       this.view = 'home';
+      if (location.pathname === '/host') {
+        this.openHost();
+        return;
+      }
       const saved = storage.saved();
       const target = launchTarget(location.search, saved);
       this.code = target.room;
@@ -327,6 +331,7 @@ export function quizApp() {
       live.start(this.token, this.code);
     },
     openHost() {
+      if (location.pathname !== '/host') history.pushState(null, '', '/host');
       if (this.hostToken) this.run(() => this.loadLibrary());
       else {
         this.view = 'login';
@@ -364,6 +369,7 @@ export function quizApp() {
       this.quizzes = quizzes;
       this.games = games;
       this.view = 'library';
+      history.replaceState(null, '', '/host');
     },
     backToLibrary() {
       if (this.dirty() && !confirm(this.t('confirmDiscard'))) return;
@@ -371,7 +377,7 @@ export function quizApp() {
       this.token = '';
       this.state = null;
       this.isHost = false;
-      history.replaceState(null, '', '/');
+      history.replaceState(null, '', '/host');
       return this.run(() => this.loadLibrary());
     },
     blankQuestion() {

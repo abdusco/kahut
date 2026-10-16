@@ -380,3 +380,42 @@ func TestCrossOriginRequests(t *testing.T) {
 		})
 	}
 }
+
+func TestHostDashboardRoute(t *testing.T) {
+	s, err := openStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	a, err := newApp(context.Background(), s, "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		path   string
+		status int
+	}{
+		{"/host", http.StatusOK},
+		{"/host/", http.StatusPermanentRedirect},
+		{"/unknown-page", http.StatusNotFound},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			a.routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, tt.path, nil))
+			if w.Code != tt.status {
+				t.Fatalf("status = %d, want %d: %s", w.Code, tt.status, w.Body.String())
+			}
+			if tt.path == "/host" {
+				if !strings.Contains(w.Body.String(), `x-data="quizApp"`) {
+					t.Fatal("host route did not serve the application shell")
+				}
+				if w.Header().Get("Cache-Control") != "no-cache" {
+					t.Fatal("host shell must allow revalidation")
+				}
+			}
+			if tt.path == "/host/" && w.Header().Get("Location") != "/host" {
+				t.Fatal("host route did not canonicalize the trailing slash")
+			}
+		})
+	}
+}

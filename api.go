@@ -91,6 +91,15 @@ func (a *App) routes() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		if r.URL.Path == "/host/" {
+			http.Redirect(w, r, "/host", http.StatusPermanentRedirect)
+			return
+		}
+		if r.URL.Path == "/host" {
+			w.Header().Set("Cache-Control", "no-cache")
+			http.ServeFileFS(w, r, files, "index.html")
+			return
+		}
 		if r.URL.Path == "/" || r.URL.Path == "/sw.js" {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
