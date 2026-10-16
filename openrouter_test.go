@@ -23,21 +23,19 @@ func fakeOpenRouter(t *testing.T, status int, body string) (*openRouter, *http.R
 	return &openRouter{key: "k", model: "m/img", base: srv.URL, client: srv.Client()}, &got
 }
 
-func imageReply(url string) string {
-	b, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"message": map[string]any{
-		"images": []any{map[string]any{"image_url": map[string]string{"url": url}}},
-	}}}})
+func imageReply(b64 string) string {
+	b, _ := json.Marshal(map[string]any{"data": []any{map[string]string{"b64_json": b64}}})
 	return string(b)
 }
 
 func TestOpenRouterGenerate(t *testing.T) {
 	png := base64.StdEncoding.EncodeToString([]byte("pixels"))
-	o, req := fakeOpenRouter(t, 200, imageReply("data:image/png;base64,"+png))
+	o, req := fakeOpenRouter(t, 200, imageReply(png))
 	data, err := o.Generate(context.Background(), "a cat")
 	if err != nil || string(data) != "pixels" {
 		t.Fatalf("got %q, %v", data, err)
 	}
-	if req.Header.Get("Authorization") != "Bearer k" || req.URL.Path != "/chat/completions" {
+	if req.Header.Get("Authorization") != "Bearer k" || req.URL.Path != "/images" {
 		t.Fatalf("bad request: %s %v", req.URL.Path, req.Header)
 	}
 }
@@ -53,11 +51,10 @@ func TestOpenRouterGenerateFailures(t *testing.T) {
 		{"out of credit", 402, `{}`, errAIRateLimit},
 		{"rate limited", 429, `{}`, errAIRateLimit},
 		{"bad json", 200, `nope`, errAIUpstream},
-		{"no choices", 200, `{"choices":[]}`, errAINoImage},
-		{"no image", 200, `{"choices":[{"message":{}}]}`, errAINoImage},
-		{"not a data url", 200, imageReply("https://example.com/a.png"), errAINoImage},
-		{"bad base64", 200, imageReply("data:image/png;base64,!!!"), errAINoImage},
-		{"too large", 200, imageReply("data:image/png;base64," + strings.Repeat("AAAA", maxImageBytes/3+1000)), errAIImageLarge},
+		{"no data", 200, `{"data":[]}`, errAINoImage},
+		{"empty image", 200, imageReply(""), errAINoImage},
+		{"bad base64", 200, imageReply("!!!"), errAINoImage},
+		{"too large", 200, imageReply(strings.Repeat("AAAA", maxImageBytes/3+1000)), errAIImageLarge},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

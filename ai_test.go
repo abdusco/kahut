@@ -31,20 +31,18 @@ func TestGenerateImageEndpoint(t *testing.T) {
 	block := false
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Messages []struct {
-				Content string `json:"content"`
-			} `json:"messages"`
+			Prompt string `json:"prompt"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		mu.Lock()
-		prompts = append(prompts, req.Messages[0].Content)
+		prompts = append(prompts, req.Prompt)
 		blocking := block
 		mu.Unlock()
 		if blocking {
 			started <- struct{}{}
 			<-release
 		}
-		_, _ = w.Write([]byte(imageReply("data:image/png;base64," + base64.StdEncoding.EncodeToString(tinyPNG))))
+		_, _ = w.Write([]byte(imageReply(base64.StdEncoding.EncodeToString(tinyPNG))))
 	}))
 	defer upstream.Close()
 	server := httptest.NewServer(a.routes())

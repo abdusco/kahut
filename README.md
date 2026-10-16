@@ -37,7 +37,7 @@ Each question can have one image. In the quiz editor, choose **Add image**, drop
 
 ### AI-generated images
 
-Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` (an [OpenRouter](https://openrouter.ai) model that can output images, for example `google/gemini-2.5-flash-image`) to show a **✨ Generate** button next to **Add image**. Without both variables the button is hidden. `OPENROUTER_BASE_URL` overrides the API address and exists for tests.
+Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` (an image model from [OpenRouter](https://openrouter.ai/models?output_modalities=image), called through its `/images` endpoint; tested with `recraft/recraft-v4.1-flash`, about 0.7¢ per image in testing) to show a **✨ Generate** button next to **Add image**. Without both variables the button is hidden. `OPENROUTER_BASE_URL` overrides the API address and exists for tests.
 
 The prompt box starts with the host's default image prompt, the question, and its answer options. The host can edit it before generating. The default image prompt is set in the Settings menu and is kept in that browser's local storage. Generated images are stored and handled like uploads.
 

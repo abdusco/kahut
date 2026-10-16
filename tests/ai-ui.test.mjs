@@ -23,19 +23,9 @@ test(
       let body = '';
       request.on('data', (chunk) => (body += chunk));
       request.on('end', () => {
-        prompts.push(JSON.parse(body).messages[0].content);
+        prompts.push(JSON.parse(body).prompt);
         response.setHeader('Content-Type', 'application/json');
-        response.end(
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  images: [{ image_url: { url: `data:image/png;base64,${PNG}` } }],
-                },
-              },
-            ],
-          }),
-        );
+        response.end(JSON.stringify({ data: [{ b64_json: PNG }] }));
       });
     });
     await new Promise((resolve) => upstream.listen(18084, '127.0.0.1', resolve));

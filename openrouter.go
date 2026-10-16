@@ -50,31 +50,20 @@ func newOpenRouter() *openRouter {
 	return &openRouter{key: key, model: model, base: base, client: &http.Client{Timeout: 90 * time.Second}}
 }
 
-type chatImage struct {
-	ImageURL struct {
-		URL string `json:"url"`
-	} `json:"image_url"`
+type imagesResponse struct {
+	Data []struct {
+		B64 string `json:"b64_json"`
+	} `json:"data"`
 }
 
-type chatResponse struct {
-	Choices []struct {
-		Message struct {
-			Images []chatImage `json:"images"`
-		} `json:"message"`
-	} `json:"choices"`
-}
-
-// Generate returns the bytes of the first image the model produced.
+// Generate returns the bytes of the first image the model produced. It uses
+// the /images endpoint, which image-only models require.
 func (o *openRouter) Generate(ctx context.Context, prompt string) ([]byte, error) {
-	body, err := json.Marshal(map[string]any{
-		"model":      o.model,
-		"modalities": []string{"image", "text"},
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
-	})
+	body, err := json.Marshal(map[string]any{"model": o.model, "prompt": prompt})
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.base+"/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.base+"/images", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -91,17 +80,14 @@ func (o *openRouter) Generate(ctx context.Context, prompt string) ([]byte, error
 	case res.StatusCode != http.StatusOK:
 		return nil, fmt.Errorf("%w: upstream status %d", errAIUpstream, res.StatusCode)
 	}
-	var out chatResponse
+	var out imagesResponse
 	if err := json.NewDecoder(io.LimitReader(res.Body, maxAIResponseBytes)).Decode(&out); err != nil {
 		return nil, errAIUpstream
 	}
-	if len(out.Choices) == 0 || len(out.Choices[0].Message.Images) == 0 {
+	if len(out.Data) == 0 || out.Data[0].B64 == "" {
 		return nil, errAINoImage
 	}
-	_, encoded, ok := strings.Cut(out.Choices[0].Message.Images[0].ImageURL.URL, ";base64,")
-	if !ok {
-		return nil, errAINoImage
-	}
+	encoded := out.Data[0].B64
 	if base64.StdEncoding.DecodedLen(len(encoded)) > maxImageBytes+3 {
 		return nil, errAIImageLarge
 	}
