@@ -17,11 +17,11 @@ import (
 func TestAccountsOwnQuizzesAndGames(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(ctx, s, `["alice:secret","bob:other"]`)
 	if err != nil {
 		t.Fatal(err)

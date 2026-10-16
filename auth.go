@@ -39,14 +39,14 @@ func (a *App) requireSession(hostOnly bool) echo.MiddlewareFunc {
 			if c.Path() == "/api/live" {
 				token = c.QueryParam("token")
 			}
-			session, err := a.store.Session(c.Request().Context(), token)
+			session, err := a.repo.Session(c.Request().Context(), token)
+			if err != nil {
+				return err
+			}
 			if session.Role == "host" {
 				if _, exists := a.users[session.Username]; !exists {
-					err = errors.New("account is no longer configured")
+					return echo.NewHTTPError(http.StatusUnauthorized, "session expired; sign in or join again")
 				}
-			}
-			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "session expired; sign in or join again")
 			}
 			if hostOnly && session.Role != "host" {
 				return echo.NewHTTPError(http.StatusForbidden, "host access required")

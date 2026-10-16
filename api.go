@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -38,7 +37,7 @@ type rateWindow struct {
 }
 type App struct {
 	ctx     context.Context
-	store   *Store
+	repo    *Repository
 	users   map[string][32]byte
 	mu      sync.Mutex
 	rooms   map[string]Room
@@ -46,17 +45,17 @@ type App struct {
 	rates   map[string]rateWindow
 }
 
-func newApp(ctx context.Context, s *Store, authUsers string) (*App, error) {
+func newApp(ctx context.Context, s *Repository, authUsers string) (*App, error) {
 	users, err := parseAuthUsers(authUsers)
 	if err != nil {
 		return nil, err
 	}
-	a := &App{ctx: ctx, store: s, users: users, rooms: map[string]Room{}, streams: map[*stream]bool{}, rates: map[string]rateWindow{}}
+	a := &App{ctx: ctx, repo: s, users: users, rooms: map[string]Room{}, streams: map[*stream]bool{}, rates: map[string]rateWindow{}}
 	rooms, err := s.Rooms(ctx)
 	if err != nil {
 		return nil, err
 	}
-	quizzes, err := s.Quizzes(ctx)
+	quizzes, err := s.AllQuizzes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +101,11 @@ func (a *App) routes() http.Handler {
 		status, message := http.StatusInternalServerError, "storage operation failed; please retry"
 		var httpError *echo.HTTPError
 		var statusError echo.HTTPStatusCoder
-		if errors.As(err, &httpError) {
+		if errors.Is(err, ErrQuizNotFound) {
+			status, message = http.StatusNotFound, ErrQuizNotFound.Error()
+		} else if errors.Is(err, ErrInvalidSession) || errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrSessionExpired) {
+			status, message = http.StatusUnauthorized, "session expired; sign in or join again"
+		} else if errors.As(err, &httpError) {
 			status, message = httpError.Code, httpError.Message
 			if message == "" {
 				message = http.StatusText(status)
@@ -242,7 +245,7 @@ func (a *App) login(c *echo.Context) error {
 	if subtle.ConstantTimeCompare(x[:], y[:]) != 1 || !exists {
 		return echo.NewHTTPError(http.StatusUnauthorized, "incorrect username or password")
 	}
-	token, s, err := a.store.NewSession(r.Context(), "host", "", "", b.Username)
+	token, s, err := a.repo.NewSession(r.Context(), "host", "", "", b.Username)
 	if err != nil {
 		return err
 	}
@@ -251,7 +254,7 @@ func (a *App) login(c *echo.Context) error {
 func (a *App) logout(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
-	if _, err := a.store.db.ExecContext(r.Context(), "DELETE FROM sessions WHERE id=?", s.ID); err != nil {
+	if err := a.repo.DeleteSession(r.Context(), s.ID); err != nil {
 		return err
 	}
 	a.mu.Lock()
@@ -270,14 +273,11 @@ func (a *App) session(c *echo.Context) error {
 func (a *App) quizzes(c *echo.Context) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
-	q, err := a.store.Quizzes(r.Context())
+	q, err := a.repo.Quizzes(r.Context(), s.Username)
 	if err != nil {
 		return err
 	}
-	owned := lo.Filter(q, func(quiz Quiz, _ int) bool {
-		return quiz.Owner == s.Username
-	})
-	return c.JSON(http.StatusOK, owned)
+	return c.JSON(http.StatusOK, q)
 }
 func (a *App) saveQuiz(c *echo.Context) error {
 	r := c.Request()
@@ -293,9 +293,7 @@ func (a *App) saveQuiz(c *echo.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if id := c.Param("id"); id != "" {
-		if _, err := a.store.OwnedQuiz(r.Context(), id, s.Username); errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "quiz not found")
-		} else if err != nil {
+		if _, err := a.repo.Quiz(r.Context(), id, s.Username); err != nil {
 			return err
 		}
 		q.ID = id
@@ -311,7 +309,7 @@ func (a *App) saveQuiz(c *echo.Context) error {
 			renamedRooms = append(renamedRooms, room)
 		}
 	}
-	if err := a.store.SaveQuiz(r.Context(), q, renamedRooms); err != nil {
+	if err := a.repo.SaveQuiz(r.Context(), q, renamedRooms); err != nil {
 		return err
 	}
 	for _, room := range renamedRooms {
@@ -331,10 +329,7 @@ func (a *App) exportQuiz(c *echo.Context) error {
 func (a *App) readQuiz(c *echo.Context, export bool) error {
 	r := c.Request()
 	s, _ := echo.ContextGet[Session](c, "session")
-	q, err := a.store.OwnedQuiz(r.Context(), c.Param("id"), s.Username)
-	if errors.Is(err, sql.ErrNoRows) {
-		return echo.NewHTTPError(http.StatusNotFound, "quiz not found")
-	}
+	q, err := a.repo.Quiz(r.Context(), c.Param("id"), s.Username)
 	if err != nil {
 		return err
 	}
@@ -349,13 +344,8 @@ func (a *App) deleteQuiz(c *echo.Context) error {
 	s, _ := echo.ContextGet[Session](c, "session")
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	res, err := a.store.db.ExecContext(r.Context(), "DELETE FROM quizzes WHERE id=? AND owner=?", c.Param("id"), s.Username)
-	if err != nil {
+	if err := a.repo.DeleteQuiz(r.Context(), c.Param("id"), s.Username); err != nil {
 		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return echo.NewHTTPError(http.StatusNotFound, "quiz not found")
 	}
 	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 }
@@ -370,10 +360,7 @@ func (a *App) createRoom(c *echo.Context) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	q, err := a.store.OwnedQuiz(r.Context(), b.QuizID, s.Username)
-	if errors.Is(err, sql.ErrNoRows) {
-		return echo.NewHTTPError(http.StatusNotFound, "quiz not found")
-	}
+	q, err := a.repo.Quiz(r.Context(), b.QuizID, s.Username)
 	if err != nil {
 		return err
 	}
@@ -385,7 +372,7 @@ func (a *App) createRoom(c *echo.Context) error {
 		code = randomID()[:8]
 	}
 	room := Room{Owner: s.Username, Code: code, Quiz: q, Phase: "lobby", Revision: 1, Sequence: 1, CreatedAt: time.Now().UnixMilli(), Players: []Player{}, Answers: []Answer{}}
-	if err = a.store.SaveRoom(r.Context(), room, nil); err != nil {
+	if err = a.repo.SaveRoom(r.Context(), room, nil); err != nil {
 		return err
 	}
 	a.rooms[code] = room
@@ -417,12 +404,12 @@ func (a *App) join(c *echo.Context) error {
 	}
 	room.Sequence++
 	// Room and session creation are serialized. If session creation fails, no player is admitted.
-	token, s, err := a.store.NewSession(r.Context(), "player", room.Code, id, "")
+	token, s, err := a.repo.NewSession(r.Context(), "player", room.Code, id, "")
 	if err != nil {
 		return err
 	}
-	if err = a.store.SaveRoom(r.Context(), room, nil); err != nil {
-		_, _ = a.store.db.ExecContext(context.Background(), "DELETE FROM sessions WHERE id=?", s.ID)
+	if err = a.repo.SaveRoom(r.Context(), room, nil); err != nil {
+		_ = a.repo.DeleteSession(context.Background(), s.ID)
 		return err
 	}
 	a.rooms[room.Code] = room
@@ -455,7 +442,7 @@ func (a *App) action(c *echo.Context) error {
 	now := time.Now().UnixMilli()
 	if room.CloseExpired(now) {
 		room.Sequence++
-		if err := a.store.SaveRoom(r.Context(), room, nil); err != nil {
+		if err := a.repo.SaveRoom(r.Context(), room, nil); err != nil {
 			return err
 		}
 		a.rooms[room.Code] = room
@@ -481,7 +468,7 @@ func (a *App) action(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusConflict, err.Error())
 	}
 	room.Sequence++
-	if err = a.store.SaveRoom(r.Context(), room, answer); err != nil {
+	if err = a.repo.SaveRoom(r.Context(), room, answer); err != nil {
 		return err
 	}
 	a.rooms[room.Code] = room
@@ -492,13 +479,12 @@ func (a *App) games(c *echo.Context) error {
 	s, _ := echo.ContextGet[Session](c, "session")
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	out := []map[string]any{}
-	for _, room := range a.rooms {
+	out := lo.FilterMap(lo.Values(a.rooms), func(room Room, _ int) (map[string]any, bool) {
 		if room.Owner != s.Username {
-			continue
+			return nil, false
 		}
-		out = append(out, map[string]any{"code": room.Code, "title": room.Quiz.Title, "phase": room.Phase, "createdAt": room.CreatedAt, "playerCount": len(room.Players)})
-	}
+		return map[string]any{"code": room.Code, "title": room.Quiz.Title, "phase": room.Phase, "createdAt": room.CreatedAt, "playerCount": len(room.Players)}, true
+	})
 	sort.Slice(out, func(i, j int) bool { return out[i]["createdAt"].(int64) > out[j]["createdAt"].(int64) })
 	return c.JSON(http.StatusOK, out)
 }
@@ -543,7 +529,7 @@ func (a *App) publish(room Room) {
 func (a *App) presence(code string) {
 	r := a.rooms[code]
 	r.Sequence++
-	if err := a.store.SaveRoom(a.ctx, r, nil); err != nil {
+	if err := a.repo.SaveRoom(a.ctx, r, nil); err != nil {
 		log.Printf("presence update failed: %v", err)
 		return
 	}
@@ -612,7 +598,7 @@ func (a *App) live(c *echo.Context) error {
 				return nil
 			}
 		case <-ticker.C:
-			if _, err = a.store.Session(a.ctx, r.URL.Query().Get("token")); err != nil {
+			if _, err = a.repo.Session(a.ctx, r.URL.Query().Get("token")); err != nil {
 				return nil
 			}
 			pingCtx, cancel := context.WithTimeout(a.ctx, 3*time.Second)
@@ -642,7 +628,7 @@ func (a *App) timers() {
 			for _, r := range a.rooms {
 				if r.CloseExpired(time.Now().UnixMilli()) {
 					r.Sequence++
-					if err := a.store.SaveRoom(a.ctx, r, nil); err != nil {
+					if err := a.repo.SaveRoom(a.ctx, r, nil); err != nil {
 						log.Printf("question timeout save failed: %v", err)
 						continue
 					}

@@ -17,12 +17,19 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct {
+type Repository struct {
 	db  *sql.DB
 	key []byte
 }
 
-func openStore(path, signingKey string) (*Store, error) {
+var (
+	ErrQuizNotFound    = errors.New("quiz not found")
+	ErrSessionNotFound = errors.New("session not found")
+	ErrInvalidSession  = errors.New("invalid session")
+	ErrSessionExpired  = errors.New("session expired")
+)
+
+func openRepository(path, signingKey string) (*Repository, error) {
 	if len(signingKey) < 32 {
 		return nil, errors.New("SESSION_SIGNING_KEY must contain at least 32 bytes")
 	}
@@ -74,32 +81,44 @@ PRAGMA user_version=2;`)
 			return nil, err
 		}
 	}
-	s := &Store{db: db, key: []byte(signingKey)}
+	repo := &Repository{db: db, key: []byte(signingKey)}
 	if path != ":memory:" {
 		if err = os.Chmod(path, 0600); err != nil {
 			return nil, err
 		}
 	}
 	ok = true
-	return s, nil
+	return repo, nil
 }
 
 func randomID() string { return rand.Text() }
 
+func (repo *Repository) Close() error {
+	return repo.db.Close()
+}
+
 // SaveQuiz also commits title changes to existing games in the same transaction.
 // Their question copies and recorded answers remain unchanged.
-func (s *Store) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Room) error {
+func (repo *Repository) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Room) error {
 	b, err := json.Marshal(q)
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := repo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "INSERT INTO quizzes(id,owner,document) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", q.ID, q.Owner, b); err != nil {
+	result, err := tx.ExecContext(ctx, "INSERT INTO quizzes(id,owner,document) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document WHERE quizzes.owner=excluded.owner", q.ID, q.Owner, b)
+	if err != nil {
 		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrQuizNotFound
 	}
 	for _, room := range renamedRooms {
 		document, err := json.Marshal(room)
@@ -113,8 +132,9 @@ func (s *Store) SaveQuiz(ctx context.Context, q Quiz, renamedRooms []Room) error
 	return tx.Commit()
 }
 
-func (s *Store) Quizzes(ctx context.Context) ([]Quiz, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT owner,document FROM quizzes ORDER BY rowid DESC")
+// AllQuizzes is used when restoring room titles at server startup.
+func (repo *Repository) AllQuizzes(ctx context.Context) ([]Quiz, error) {
+	rows, err := repo.db.QueryContext(ctx, "SELECT owner,document FROM quizzes ORDER BY rowid DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -134,21 +154,34 @@ func (s *Store) Quizzes(ctx context.Context) ([]Quiz, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) Quiz(ctx context.Context, id string) (Quiz, error) {
-	var b []byte
-	var q Quiz
-	err := s.db.QueryRowContext(ctx, "SELECT owner,document FROM quizzes WHERE id=?", id).Scan(&q.Owner, &b)
+func (repo *Repository) Quizzes(ctx context.Context, owner string) ([]Quiz, error) {
+	rows, err := repo.db.QueryContext(ctx, "SELECT document FROM quizzes WHERE owner=? ORDER BY rowid DESC", owner)
 	if err != nil {
-		return q, err
+		return nil, err
 	}
-	err = json.Unmarshal(b, &q)
-	return q, err
+	defer rows.Close()
+	out := []Quiz{}
+	for rows.Next() {
+		var document []byte
+		quiz := Quiz{Owner: owner}
+		if err = rows.Scan(&document); err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(document, &quiz); err != nil {
+			return nil, err
+		}
+		out = append(out, quiz)
+	}
+	return out, rows.Err()
 }
 
-func (s *Store) OwnedQuiz(ctx context.Context, id, owner string) (Quiz, error) {
+func (repo *Repository) Quiz(ctx context.Context, id, owner string) (Quiz, error) {
 	var b []byte
 	q := Quiz{Owner: owner}
-	err := s.db.QueryRowContext(ctx, "SELECT document FROM quizzes WHERE id=? AND owner=?", id, owner).Scan(&b)
+	err := repo.db.QueryRowContext(ctx, "SELECT document FROM quizzes WHERE id=? AND owner=?", id, owner).Scan(&b)
+	if errors.Is(err, sql.ErrNoRows) {
+		return q, ErrQuizNotFound
+	}
 	if err != nil {
 		return q, err
 	}
@@ -156,12 +189,27 @@ func (s *Store) OwnedQuiz(ctx context.Context, id, owner string) (Quiz, error) {
 	return q, err
 }
 
-func (s *Store) SaveRoom(ctx context.Context, r Room, a *Answer) error {
+func (repo *Repository) DeleteQuiz(ctx context.Context, id, owner string) error {
+	result, err := repo.db.ExecContext(ctx, "DELETE FROM quizzes WHERE id=? AND owner=?", id, owner)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrQuizNotFound
+	}
+	return nil
+}
+
+func (repo *Repository) SaveRoom(ctx context.Context, r Room, a *Answer) error {
 	b, err := json.Marshal(r)
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := repo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -182,8 +230,8 @@ func (s *Store) SaveRoom(ctx context.Context, r Room, a *Answer) error {
 	return tx.Commit()
 }
 
-func (s *Store) Rooms(ctx context.Context) ([]Room, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT owner,document FROM rooms ORDER BY rowid DESC")
+func (repo *Repository) Rooms(ctx context.Context) ([]Room, error) {
+	rows, err := repo.db.QueryContext(ctx, "SELECT owner,document FROM rooms ORDER BY rowid DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -212,34 +260,52 @@ type Session struct {
 	Expires  int64  `json:"expires"`
 }
 
-func (s *Store) sign(id string) string {
-	m := hmac.New(sha256.New, s.key)
+func (repo *Repository) sign(id string) string {
+	m := hmac.New(sha256.New, repo.key)
 	m.Write([]byte(id))
 	return id + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
-func (s *Store) NewSession(ctx context.Context, role, room, player, username string) (string, Session, error) {
+func (repo *Repository) NewSession(ctx context.Context, role, room, player, username string) (string, Session, error) {
 	duration := 30 * 24 * time.Hour
 	if role == "host" {
 		duration = 12 * time.Hour
 	}
 	v := Session{ID: randomID(), Role: role, Room: room, PlayerID: player, Username: username, Expires: time.Now().Add(duration).UnixMilli()}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO sessions(id,role,room_code,player_id,username,expires) VALUES(?,?,?,?,?,?)", v.ID, v.Role, v.Room, v.PlayerID, v.Username, v.Expires)
-	return s.sign(v.ID), v, err
+	_, err := repo.db.ExecContext(ctx, "INSERT INTO sessions(id,role,room_code,player_id,username,expires) VALUES(?,?,?,?,?,?)", v.ID, v.Role, v.Room, v.PlayerID, v.Username, v.Expires)
+	return repo.sign(v.ID), v, err
 }
 
-func (s *Store) Session(ctx context.Context, token string) (Session, error) {
+func (repo *Repository) Session(ctx context.Context, token string) (Session, error) {
 	var v Session
 	id, _, ok := strings.Cut(token, ".")
-	if !ok || len(token) > 200 || !hmac.Equal([]byte(s.sign(id)), []byte(token)) {
-		return v, errors.New("invalid session")
+	if !ok || len(token) > 200 || !hmac.Equal([]byte(repo.sign(id)), []byte(token)) {
+		return v, ErrInvalidSession
 	}
-	err := s.db.QueryRowContext(ctx, "SELECT id,role,room_code,player_id,username,expires FROM sessions WHERE id=?", id).Scan(&v.ID, &v.Role, &v.Room, &v.PlayerID, &v.Username, &v.Expires)
+	err := repo.db.QueryRowContext(ctx, "SELECT id,role,room_code,player_id,username,expires FROM sessions WHERE id=?", id).Scan(&v.ID, &v.Role, &v.Room, &v.PlayerID, &v.Username, &v.Expires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Session{}, ErrSessionNotFound
+	}
 	if err != nil {
 		return v, err
 	}
 	if time.Now().UnixMilli() >= v.Expires {
-		return Session{}, errors.New("session expired")
+		return Session{}, ErrSessionExpired
 	}
 	return v, nil
+}
+
+func (repo *Repository) DeleteSession(ctx context.Context, id string) error {
+	result, err := repo.db.ExecContext(ctx, "DELETE FROM sessions WHERE id=?", id)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrSessionNotFound
+	}
+	return nil
 }

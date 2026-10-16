@@ -20,11 +20,11 @@ import (
 func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(ctx, s, `["host:test-password"]`)
 	if err != nil {
 		t.Fatal(err)
@@ -171,11 +171,11 @@ func TestAPIFlowAndPrivateLiveState(t *testing.T) {
 func TestConcurrentAnswersCommitOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
@@ -232,11 +232,11 @@ func TestConcurrentAnswersCommitOnce(t *testing.T) {
 func TestMultipleStreamsPresence(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
@@ -306,11 +306,11 @@ func TestMultipleStreamsPresence(t *testing.T) {
 
 func TestAPIRejectsInvalidRequests(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
@@ -350,11 +350,11 @@ func TestAPIRejectsInvalidRequests(t *testing.T) {
 
 func TestCrossOriginRequests(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(ctx, s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)
@@ -410,11 +410,11 @@ func TestCrossOriginRequests(t *testing.T) {
 }
 
 func TestHostDashboardRoute(t *testing.T) {
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(context.Background(), s, `["host:password"]`)
 	if err != nil {
 		t.Fatal(err)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestRestartRecovery(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			path := filepath.Join(t.TempDir(), "quiz.db")
-			s, err := openStore(path, "test-signing-key-at-least-32-bytes")
+			s, err := openRepository(path, "test-signing-key-at-least-32-bytes")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -38,7 +39,7 @@ func TestRestartRecovery(t *testing.T) {
 			if err = s.db.Close(); err != nil {
 				t.Fatal(err)
 			}
-			s, err = openStore(path, "test-signing-key-at-least-32-bytes")
+			s, err = openRepository(path, "test-signing-key-at-least-32-bytes")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -68,9 +69,108 @@ func TestRestartRecovery(t *testing.T) {
 	}
 }
 
+func TestRepositoryQuizOwnershipAndErrors(t *testing.T) {
+	ctx := context.Background()
+	repo, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+	quiz := testQuiz()
+	quiz.ID, quiz.Owner = "alice-quiz", "alice"
+	if err = repo.SaveQuiz(ctx, quiz, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name, id, owner string
+	}{
+		{"missing quiz", "missing", "alice"},
+		{"another account", quiz.ID, "bob"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := repo.Quiz(ctx, tt.id, tt.owner); !errors.Is(err, ErrQuizNotFound) {
+				t.Fatalf("Quiz error = %v, want ErrQuizNotFound", err)
+			}
+			if err := repo.DeleteQuiz(ctx, tt.id, tt.owner); !errors.Is(err, ErrQuizNotFound) {
+				t.Fatalf("DeleteQuiz error = %v, want ErrQuizNotFound", err)
+			}
+		})
+	}
+	for _, tt := range []struct {
+		owner string
+		count int
+	}{
+		{"alice", 1},
+		{"bob", 0},
+	} {
+		t.Run("list "+tt.owner, func(t *testing.T) {
+			quizzes, err := repo.Quizzes(ctx, tt.owner)
+			if err != nil || quizzes == nil || len(quizzes) != tt.count {
+				t.Fatalf("Quizzes = %+v, %v; want %d", quizzes, err, tt.count)
+			}
+		})
+	}
+	stolen := quiz
+	stolen.Owner, stolen.Title = "bob", "Overwritten"
+	if err = repo.SaveQuiz(ctx, stolen, nil); !errors.Is(err, ErrQuizNotFound) {
+		t.Fatalf("cross-account save = %v, want ErrQuizNotFound", err)
+	}
+	if saved, err := repo.Quiz(ctx, quiz.ID, "alice"); err != nil || saved.Title != quiz.Title {
+		t.Fatalf("denied write changed the quiz: %+v, %v", saved, err)
+	}
+	if err = repo.DeleteQuiz(ctx, quiz.ID, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.Quiz(ctx, quiz.ID, "alice"); !errors.Is(err, ErrQuizNotFound) {
+		t.Fatalf("deleted quiz = %v, want ErrQuizNotFound", err)
+	}
+}
+
+func TestRepositorySessionErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		want error
+	}{
+		{"invalid", ErrInvalidSession},
+		{"missing", ErrSessionNotFound},
+		{"expired", ErrSessionExpired},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			repo, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer repo.Close()
+			token, session, err := repo.NewSession(ctx, "host", "", "", "alice")
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch tt.name {
+			case "invalid":
+				token += "tampered"
+			case "missing":
+				if err = repo.DeleteSession(ctx, session.ID); err != nil {
+					t.Fatal(err)
+				}
+				if err = repo.DeleteSession(ctx, session.ID); !errors.Is(err, ErrSessionNotFound) {
+					t.Fatalf("DeleteSession error = %v, want ErrSessionNotFound", err)
+				}
+			case "expired":
+				if _, err = repo.db.ExecContext(ctx, "UPDATE sessions SET expires=0 WHERE id=?", session.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err = repo.Session(ctx, token); !errors.Is(err, tt.want) {
+				t.Fatalf("Session error = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestRoomAnswerTransactionRollback(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(filepath.Join(t.TempDir(), "quiz.db"), "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(filepath.Join(t.TempDir(), "quiz.db"), "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +194,7 @@ func TestRoomAnswerTransactionRollback(t *testing.T) {
 
 func TestSessions(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +219,14 @@ func TestSessions(t *testing.T) {
 
 func TestSigningKeyConfiguration(t *testing.T) {
 	for _, key := range []string{"", "too-short"} {
-		if s, err := openStore(":memory:", key); err == nil {
+		if s, err := openRepository(":memory:", key); err == nil {
 			s.db.Close()
 			t.Fatal("accepted a missing or short signing key")
 		}
 	}
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "quiz.db")
-	s, err := openStore(path, "first-test-signing-key-at-least-32-bytes")
+	s, err := openRepository(path, "first-test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,14 +242,14 @@ func TestSigningKeyConfiguration(t *testing.T) {
 	if err = s.db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(path, "first-test-signing-key-at-least-32-bytes")
+	s, err = openRepository(path, "first-test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if session, err := s.Session(ctx, token); err != nil || session.Username != "alice" {
 		t.Fatalf("stable signing key did not restore the host session: %+v, %v", session, err)
 	}
-	if quiz, err := s.OwnedQuiz(ctx, quiz.ID, "alice"); err != nil || quiz.Owner != "alice" {
+	if quiz, err := s.Quiz(ctx, quiz.ID, "alice"); err != nil || quiz.Owner != "alice" {
 		t.Fatalf("quiz ownership did not survive restart: %+v, %v", quiz, err)
 	}
 	var metaTables int
@@ -159,7 +259,7 @@ func TestSigningKeyConfiguration(t *testing.T) {
 	if err = s.db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(path, "different-test-signing-key-at-least-32-bytes")
+	s, err = openRepository(path, "different-test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +272,7 @@ func TestSigningKeyConfiguration(t *testing.T) {
 func TestQuizRenameTransaction(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "quiz.db")
-	s, err := openStore(path, "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(path, "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +295,7 @@ func TestQuizRenameTransaction(t *testing.T) {
 	if err = s.SaveQuiz(ctx, quiz, []Room{room}); err == nil {
 		t.Fatal("expected a room update failure")
 	}
-	unchanged, err := s.Quiz(ctx, quiz.ID)
+	unchanged, err := s.Quiz(ctx, quiz.ID, quiz.Owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +311,7 @@ func TestQuizRenameTransaction(t *testing.T) {
 	if err = s.db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	s, err = openStore(path, "test-signing-key-at-least-32-bytes")
+	s, err = openRepository(path, "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +340,7 @@ func TestExistingGameTitlesFollowSavedQuizOnStartup(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+			s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 			if err != nil {
 				t.Fatal(err)
 			}

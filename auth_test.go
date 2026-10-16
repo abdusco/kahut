@@ -50,11 +50,11 @@ func TestParseAuthUsers(t *testing.T) {
 
 func TestAccountLogin(t *testing.T) {
 	ctx := context.Background()
-	s, err := openStore(":memory:", "test-signing-key-at-least-32-bytes")
+	s, err := openRepository(":memory:", "test-signing-key-at-least-32-bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	a, err := newApp(ctx, s, `["alice:secret","bob:other:password"]`)
 	if err != nil {
 		t.Fatal(err)

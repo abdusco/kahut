@@ -23,11 +23,11 @@ func main() {
 	if path == "" {
 		path = "./data/kahut.db"
 	}
-	s, err := openStore(path, os.Getenv("SESSION_SIGNING_KEY"))
+	s, err := openRepository(path, os.Getenv("SESSION_SIGNING_KEY"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer s.db.Close()
+	defer s.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	a, err := newApp(ctx, s, users)
