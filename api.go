@@ -38,6 +38,7 @@ type App struct {
 	mu      sync.Mutex
 	rooms   map[string]Room
 	streams map[*stream]bool
+	ai      *openRouter // nil when image generation is not configured
 }
 
 func newApp(ctx context.Context, s *Repository, authUsers string) (*App, error) {

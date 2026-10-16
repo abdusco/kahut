@@ -40,6 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	a.ai = newOpenRouter()
 	addr := os.Getenv("ADDR")
 	if port := os.Getenv("PORT"); port != "" {
 		addr = ":" + port
