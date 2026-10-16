@@ -564,6 +564,12 @@ main > section[hidden] {
 .danger {
   color: #ca4656;
 }
+.outline.danger {
+  border-color: color-mix(in srgb, #ca4656 45%, var(--line));
+}
+.outline.danger:hover {
+  background: color-mix(in srgb, #ca4656 10%, var(--panel));
+}
 .wide {
   width: 100%;
   display: flex;
