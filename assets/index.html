@@ -327,6 +327,7 @@
                     ><div
                       class="choice-editor"
                       :class="{['choice-'+j]:true, 'is-correct':q.correctIndex===j}"
+                      @click="if (!$event.target.closest('input, button')) q.correctIndex=j"
                     >
                       <span class="correct-choice-label" x-show="q.correctIndex===j"
                         ><span aria-hidden="true">✓</span>

@@ -808,6 +808,7 @@ main {
   border-radius: 10px;
   border: 2px solid transparent;
   border-left: 4px solid var(--answer-color);
+  cursor: pointer;
 }
 .choice-editor.is-correct {
   border-color: var(--green);
@@ -841,6 +842,7 @@ main {
   padding: 8px;
   flex: 1;
   width: 100%;
+  cursor: text;
 }
 .choice-editor .quiet {
   padding: 4px;

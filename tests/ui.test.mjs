@@ -106,7 +106,35 @@ test(
       await host.getByRole('heading', { name: 'Edit quiz', exact: true }).waitFor();
       assert.equal(await host.getByLabel('Quiz title').inputValue(), 'Hat trick');
       assert.equal(await host.locator('.choice-editor.is-correct').count(), 1);
-      await host.getByRole('radio', { name: 'Correct answer 2', exact: true }).check();
+      await host
+        .locator('.choice-editor')
+        .nth(1)
+        .click({ position: { x: 8, y: 8 } });
+      assert.equal(
+        await host
+          .getByRole('radio', { name: 'Correct answer 2', exact: true })
+          .isChecked(),
+        true,
+      );
+      await host.locator('.choice-editor').nth(0).locator('input[type="text"]').click();
+      assert.equal(
+        await host
+          .getByRole('radio', { name: 'Correct answer 2', exact: true })
+          .isChecked(),
+        true,
+      );
+      await host.getByRole('button', { name: '+ Add choice', exact: true }).click();
+      await host
+        .locator('.choice-editor')
+        .nth(2)
+        .getByRole('button', { name: 'Remove choice', exact: true })
+        .click();
+      assert.equal(
+        await host
+          .getByRole('radio', { name: 'Correct answer 2', exact: true })
+          .isChecked(),
+        true,
+      );
       assert.equal(
         await host.locator('.choice-editor.is-correct input[type="text"]').inputValue(),
         'Shoe',
