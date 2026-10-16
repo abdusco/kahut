@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LiveConnection, launchTarget } from '../assets/live.js';
+import { LiveConnection } from '../assets/live.js';
+import { resolveRoute, roomPath, editorPath, gamePath } from '../assets/routes.js';
 import { validQuiz, quizApp, quizPrompt } from '../assets/app.js';
 import { messages } from '../assets/i18n.js';
 
@@ -105,16 +106,45 @@ function harness() {
   };
 }
 
-test('room links take precedence and the homepage never auto-restores', () => {
-  const saved = { room: 'ABCDEFGH' };
-  for (const [search, room, restore] of [
-    ['', '', false],
-    ['?resume=1', 'ABCDEFGH', true],
-    ['?room=abcdefgh', 'ABCDEFGH', true],
-    ['?room=OTHER123&resume=1', 'OTHER123', false],
+test('page paths resolve to distinct views and legacy invitations become path links', () => {
+  for (const [path, search, want] of [
+    ['/', '', { kind: 'home', path: '/' }],
+    ['/host', '', { kind: 'host', path: '/host' }],
+    ['/host/quizzes/new', '', { kind: 'newQuiz', path: '/host/quizzes/new' }],
+    [
+      '/host/quizzes/quiz-1/edit',
+      '',
+      { kind: 'editQuiz', quizId: 'quiz-1', path: '/host/quizzes/quiz-1/edit' },
+    ],
+    [
+      '/host/games/abcdefgh',
+      '',
+      { kind: 'history', code: 'ABCDEFGH', path: '/host/games/ABCDEFGH' },
+    ],
+    [
+      '/rooms/abcdefgh',
+      '?resume=1',
+      { kind: 'room', code: 'ABCDEFGH', path: '/rooms/ABCDEFGH' },
+    ],
+    ['/resume', '', { kind: 'resume', path: '/resume' }],
+    [
+      '/',
+      '?room=abcdefgh&resume=1',
+      { kind: 'room', code: 'ABCDEFGH', path: '/rooms/ABCDEFGH' },
+    ],
+    ['/', '?resume=1', { kind: 'resume', path: '/resume' }],
+    [
+      '/host/quizzes/quiz-1/edit/',
+      '',
+      { kind: 'editQuiz', quizId: 'quiz-1', path: '/host/quizzes/quiz-1/edit' },
+    ],
+    ['/unknown', '', { kind: 'notFound', path: '/unknown' }],
   ])
-    assert.deepEqual(launchTarget(search, saved), { room, restore });
-  assert.deepEqual(launchTarget('?resume=1', null), { room: '', restore: false });
+    assert.deepEqual(resolveRoute(path, search), want);
+  assert.equal(roomPath('abcdefgh'), '/rooms/ABCDEFGH');
+  assert.equal(editorPath('quiz-1'), '/host/quizzes/quiz-1/edit');
+  assert.equal(editorPath(), '/host/quizzes/new');
+  assert.equal(gamePath('abcdefgh'), '/host/games/ABCDEFGH');
 });
 
 test('first state enables readiness; socket open and heartbeat do not', () => {

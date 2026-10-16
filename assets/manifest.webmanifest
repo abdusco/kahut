@@ -3,7 +3,7 @@
   "name": "kahut",
   "short_name": "kahut",
   "description": "A live multiplayer quiz game with nicknames and leaderboards.",
-  "start_url": "/?resume=1",
+  "start_url": "/resume",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f4f3ff",

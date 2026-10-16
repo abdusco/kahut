@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +21,8 @@ import (
 
 	"github.com/coder/websocket"
 )
+
+var pageRoute = regexp.MustCompile(`^/(host(/quizzes/(new|[A-Za-z0-9_-]+/edit)|/games/[A-Za-z0-9]{8})?|rooms/[A-Za-z0-9]{8}|resume)?$`)
 
 type stream struct {
 	session Session
@@ -105,11 +108,14 @@ func (a *App) routes() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Path == "/host/" {
-			http.Redirect(w, r, "/host", http.StatusPermanentRedirect)
+		canonical := strings.TrimSuffix(r.URL.Path, "/")
+		if r.URL.Path != "/" && canonical != r.URL.Path && pageRoute.MatchString(canonical) {
+			target := *r.URL
+			target.Path = canonical
+			http.Redirect(w, r, target.String(), http.StatusPermanentRedirect)
 			return
 		}
-		if r.URL.Path == "/host" {
+		if pageRoute.MatchString(r.URL.Path) {
 			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeFileFS(w, r, files, "index.html")
 			return

@@ -60,6 +60,20 @@
       </div>
       <div class="notice" role="status" x-show="message" x-text="message"></div>
       <div class="notice" x-show="!online" x-text="t('offline')"></div>
+      <section class="narrow" x-show="view==='loading'">
+        <div class="panel connecting">
+          <div class="spinner" x-show="busy"></div>
+          <h2 x-text="busy ? t('loadingPage') : t('couldNotLoad')"></h2>
+          <div class="actions" x-show="!busy">
+            <button class="outline" @click="launch()" x-text="t('refresh')"></button
+            ><button
+              class="quiet"
+              @click="backToLibrary()"
+              x-text="t('backToLibrary')"
+            ></button>
+          </div>
+        </div>
+      </section>
 
       <section x-show="view === 'home'" class="home-grid">
         <div class="hero">

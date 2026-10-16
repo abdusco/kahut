@@ -420,7 +420,14 @@ func TestHostDashboardRoute(t *testing.T) {
 		status int
 	}{
 		{"/host", http.StatusOK},
+		{"/host/quizzes/new", http.StatusOK},
+		{"/host/quizzes/quiz-1/edit", http.StatusOK},
+		{"/host/games/ABCDEFGH", http.StatusOK},
+		{"/rooms/ABCDEFGH", http.StatusOK},
+		{"/resume", http.StatusOK},
 		{"/host/", http.StatusPermanentRedirect},
+		{"/host/quizzes/quiz-1/edit/", http.StatusPermanentRedirect},
+		{"/host/quizzes/quiz-1/unknown", http.StatusNotFound},
 		{"/unknown-page", http.StatusNotFound},
 	} {
 		t.Run(tt.path, func(t *testing.T) {
@@ -429,7 +436,7 @@ func TestHostDashboardRoute(t *testing.T) {
 			if w.Code != tt.status {
 				t.Fatalf("status = %d, want %d: %s", w.Code, tt.status, w.Body.String())
 			}
-			if tt.path == "/host" {
+			if tt.status == http.StatusOK {
 				if !strings.Contains(w.Body.String(), `x-data="quizApp"`) {
 					t.Fatal("host route did not serve the application shell")
 				}
@@ -437,7 +444,7 @@ func TestHostDashboardRoute(t *testing.T) {
 					t.Fatal("host shell must allow revalidation")
 				}
 			}
-			if tt.path == "/host/" && w.Header().Get("Location") != "/host" {
+			if tt.status == http.StatusPermanentRedirect && w.Header().Get("Location") != strings.TrimSuffix(tt.path, "/") {
 				t.Fatal("host route did not canonicalize the trailing slash")
 			}
 		})

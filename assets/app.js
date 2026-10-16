@@ -1,4 +1,5 @@
-import { LiveConnection, launchTarget } from './live.js';
+import { LiveConnection } from './live.js';
+import { resolveRoute, roomPath, editorPath, gamePath } from './routes.js';
 import { messages, translateError } from './i18n.js';
 
 const storage = {
@@ -116,7 +117,7 @@ export function quizApp() {
       );
     },
     get inviteURL() {
-      return `${location.origin}/?room=${encodeURIComponent(this.code)}`;
+      return `${location.origin}${roomPath(this.code)}`;
     },
     get answeredCount() {
       return this.state?.answeredCount || 0;
@@ -203,18 +204,47 @@ export function quizApp() {
       this.token = '';
       this.isHost = false;
       this.view = 'home';
-      if (location.pathname === '/host') {
-        this.openHost();
+      const route = resolveRoute(location.pathname, location.search);
+      this.navigate(route.path, true);
+      if (['host', 'newQuiz', 'editQuiz', 'history'].includes(route.kind)) {
+        this.run(() => this.loadHostRoute(route));
         return;
       }
       const saved = storage.saved();
-      const target = launchTarget(location.search, saved);
-      this.code = target.room;
-      if (target.restore && saved) {
-        if (saved.role === 'host' && this.hostToken) this.enterRoom(saved.room, true);
+      this.code = route.kind === 'room' ? route.code : '';
+      if (
+        saved &&
+        (route.kind === 'resume' ||
+          (route.kind === 'room' && route.code === saved.room?.toUpperCase()))
+      ) {
+        if (saved.role === 'host' && this.hostToken)
+          this.enterRoom(saved.room, true, '', true);
         else if (saved.role === 'player' && saved.token)
-          this.enterRoom(saved.room, false, saved.token);
+          this.enterRoom(saved.room, false, saved.token, true);
+        else if (route.kind === 'resume') this.home();
+      } else if (route.kind === 'resume') this.home();
+      else if (route.kind === 'notFound') {
+        this.view = 'loading';
+        this.error = this.t('pageNotFound');
       }
+    },
+    navigate(path, replace = false) {
+      if (typeof window === 'undefined') return;
+      if (location.pathname + location.search === path) return;
+      history[replace ? 'replaceState' : 'pushState'](null, '', path);
+    },
+    async loadHostRoute(route) {
+      if (!this.hostToken) {
+        this.view = 'login';
+        return;
+      }
+      this.view = 'loading';
+      if (route.kind === 'editQuiz') {
+        const quiz = await this.request(`/quizzes/${encodeURIComponent(route.quizId)}`);
+        this.setDraft(quiz, true);
+      } else if (route.kind === 'newQuiz') this.newQuiz(true);
+      else if (route.kind === 'history') await this.loadHistory(route.code);
+      else await this.loadLibrary();
     },
     dirty() {
       return this.view === 'editor' && JSON.stringify(this.draft) !== this.draftOriginal;
@@ -230,10 +260,10 @@ export function quizApp() {
       this.error = '';
       this.message = '';
       this.savedRoom = storage.saved()?.room || '';
-      history.replaceState(null, '', '/');
+      this.navigate('/', true);
     },
     resumeSaved() {
-      history.replaceState(null, '', '/?resume=1');
+      this.navigate('/resume');
       this.launch();
     },
     expire() {
@@ -309,7 +339,7 @@ export function quizApp() {
         this.enterRoom(result.room, false, result.token);
       });
     },
-    enterRoom(room, host, token = '') {
+    enterRoom(room, host, token = '', replace = false) {
       live.stop();
       this.code = room.toUpperCase();
       this.isHost = host;
@@ -327,12 +357,12 @@ export function quizApp() {
         }),
       );
       this.savedRoom = this.code;
-      history.replaceState(null, '', `/?room=${this.code}`);
+      this.navigate(roomPath(this.code), replace);
       live.start(this.token, this.code);
     },
     openHost() {
-      if (location.pathname !== '/host') history.pushState(null, '', '/host');
-      if (this.hostToken) this.run(() => this.loadLibrary());
+      this.navigate('/host');
+      if (this.hostToken) this.run(() => this.loadHostRoute({ kind: 'host' }));
       else {
         this.view = 'login';
         this.error = '';
@@ -349,7 +379,7 @@ export function quizApp() {
         this.password = '';
         this.hostToken = result.token;
         storage.set('hostToken', result.token);
-        await this.loadLibrary();
+        await this.loadHostRoute(resolveRoute(location.pathname, location.search));
       });
     },
     logout() {
@@ -369,7 +399,7 @@ export function quizApp() {
       this.quizzes = quizzes;
       this.games = games;
       this.view = 'library';
-      history.replaceState(null, '', '/host');
+      this.navigate('/host');
     },
     backToLibrary() {
       if (this.dirty() && !confirm(this.t('confirmDiscard'))) return;
@@ -377,7 +407,7 @@ export function quizApp() {
       this.token = '';
       this.state = null;
       this.isHost = false;
-      history.replaceState(null, '', '/host');
+      this.navigate('/host');
       return this.run(() => this.loadLibrary());
     },
     blankQuestion() {
@@ -388,7 +418,7 @@ export function quizApp() {
         timeLimitSeconds: 20,
       };
     },
-    setDraft(quiz) {
+    setDraft(quiz, replace = false) {
       // Quiz documents are JSON. Serialization also unwraps Alpine's proxies,
       // which structuredClone cannot copy.
       this.draft = JSON.parse(JSON.stringify(quiz));
@@ -396,9 +426,13 @@ export function quizApp() {
       this.view = 'editor';
       this.error = '';
       this.message = '';
+      this.navigate(editorPath(quiz.id), replace);
     },
-    newQuiz() {
-      this.setDraft({ version: 1, title: '', questions: [this.blankQuestion()] });
+    newQuiz(replace = false) {
+      this.setDraft(
+        { version: 1, title: '', questions: [this.blankQuestion()] },
+        replace,
+      );
     },
     editQuiz(quiz) {
       this.setDraft(quiz);
@@ -570,10 +604,12 @@ export function quizApp() {
       if (confirm(this.t('confirmEnd'))) return this.act('finish');
     },
     showHistory(code) {
-      return this.run(async () => {
-        this.historyGame = await this.request(`/games/${code}`);
-        this.view = 'history';
-      });
+      return this.run(() => this.loadHistory(code));
+    },
+    async loadHistory(code) {
+      this.historyGame = await this.request(`/games/${code}`);
+      this.view = 'history';
+      this.navigate(gamePath(code));
     },
     historicalAnswer(player, question, q) {
       const answer = this.historyGame.game.answers.find(

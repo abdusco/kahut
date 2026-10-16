@@ -1,12 +1,13 @@
 // Existing tabs keep their current worker until they close. This prevents a new
 // worker from serving a different shell version beneath an already-running app.
-const CACHE = 'kahut-shell-v12';
+const CACHE = 'kahut-shell-v13';
 const SHELL = [
   '/',
   '/style.css',
   '/boot.js',
   '/app.js',
   '/live.js',
+  '/routes.js',
   '/i18n.js',
   '/vendor/alpine-3.15.0.js',
   '/vendor/qrcode-1.4.4.js',
@@ -40,10 +41,11 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/api/')
   )
     return;
-  const path =
-    request.mode === 'navigate' && ['/', '/host'].includes(url.pathname)
-      ? '/'
-      : url.pathname;
+  const isPage =
+    /^\/(host(\/quizzes\/(new|[A-Za-z0-9_-]+\/edit)|\/games\/[A-Za-z0-9]{8})?|rooms\/[A-Za-z0-9]{8}|resume)?\/?$/.test(
+      url.pathname,
+    );
+  const path = request.mode === 'navigate' && isPage ? '/' : url.pathname;
   if (!SHELL.includes(path)) return;
   event.respondWith(
     caches.open(CACHE).then(async (cache) => (await cache.match(path)) || fetch(request)),

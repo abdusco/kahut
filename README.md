@@ -12,7 +12,7 @@ HOST_PASSWORD='choose-a-host-password' go run .
 
 Open <http://localhost:8080>. Choose **Host a game**, sign in, and create a quiz or try the sample. Players open the invitation link or enter the room code on the homepage.
 
-The host dashboard lives at `/host`. Opening or refreshing that URL restores the quiz library when a valid host session is saved, or shows host login otherwise.
+Pages use paths on the app’s subdomain: `/host` for the dashboard, `/host/quizzes/new` for creation, `/host/quizzes/{id}/edit` for a saved quiz editor, `/host/games/{code}` for results, and `/rooms/{code}` for invitations and live play. Refreshing a saved editor reloads its saved questions. Host-only links show login when needed and continue to the requested page after signing in.
 
 Renaming a quiz updates its live and saved game titles, including games created before the rename. Changes to question content apply to new games; historical questions, answers, and scores are preserved.
 
@@ -22,7 +22,7 @@ API requests support all origins, including `Authorization`/JSON preflights, and
 
 Questions have 2–4 choices, one correct answer, and a 5–120 second timer. Correct answers earn 500–1,000 points based on server receipt time; wrong or missing answers earn zero. Players first see answer feedback; the host’s **Show leaderboard** action switches everyone to a dedicated ranking screen, and **Next question** returns them to the quiz. Late joiners wait for the next question. Interrupted questions retain their original deadlines.
 
-The app supports English/Turkish, light/dark/system themes, and installation as a PWA. Language and appearance controls live in the Settings side menu. The offline shell opens without a network, but gameplay and quiz editing require the server. A root visit opens home; invitation links and installed launches can restore a saved session.
+The app supports English/Turkish, light/dark/system themes, and installation as a PWA. Language and appearance controls live in the Settings side menu. The offline shell opens without a network, but gameplay and quiz editing require the server. A root visit opens home; room paths and installed launches through `/resume` can restore a saved session. Previously shared query-based invitations still work and are converted to path URLs.
 
 ## Quiz JSON
 

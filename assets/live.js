@@ -173,12 +173,3 @@ export class LiveConnection {
     this.connect();
   }
 }
-
-export function launchTarget(search, saved) {
-  const params = new URLSearchParams(search);
-  const room = params.get('room')?.trim().toUpperCase();
-  if (room) return { room, restore: saved?.room?.toUpperCase() === room };
-  if (params.get('resume') === '1' && saved?.room)
-    return { room: saved.room, restore: true };
-  return { room: '', restore: false };
-}

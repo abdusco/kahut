@@ -101,6 +101,10 @@ test(
       );
       await dialog.getByRole('button', { name: 'Import quiz', exact: true }).click();
       await host.getByRole('button', { name: 'Edit', exact: true }).click();
+      assert.match(new URL(host.url()).pathname, /^\/host\/quizzes\/[^/]+\/edit$/);
+      await host.reload();
+      await host.getByRole('heading', { name: 'Edit quiz', exact: true }).waitFor();
+      assert.equal(await host.getByLabel('Quiz title').inputValue(), 'Hat trick');
       assert.equal(await host.locator('.choice-editor.is-correct').count(), 1);
       await host.getByRole('radio', { name: 'Correct answer 2', exact: true }).check();
       assert.equal(
@@ -120,7 +124,7 @@ test(
       );
       await host.getByRole('button', { name: 'Save quiz', exact: true }).click();
       await host.getByRole('button', { name: 'Host', exact: true }).click();
-      await host.waitForURL(/room=/);
+      await host.waitForURL(/\/rooms\/[A-Z0-9]{8}$/);
       await player.goto(host.url());
       await player.getByLabel('Your nickname').fill('Ada');
       await player.getByRole('button', { name: 'Join a game →', exact: true }).click();
