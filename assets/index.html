@@ -260,13 +260,11 @@
       </section>
 
       <section x-show="view === 'editor' && draft">
-        <div class="page-heading">
-          <div>
-            <button class="quiet" @click="backToLibrary()">
-              ← <span x-text="t('library')"></span>
-            </button>
-            <h1 class="page-title" x-text="draft?.id ? t('editQuiz') : t('newQuiz')"></h1>
-          </div>
+        <button class="quiet" @click="backToLibrary()">
+          ← <span x-text="t('library')"></span>
+        </button>
+        <div class="page-heading editor-heading">
+          <h1 class="page-title" x-text="draft?.id ? t('editQuiz') : t('newQuiz')"></h1>
           <button
             class="primary"
             :disabled="busy || !online"

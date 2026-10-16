@@ -675,6 +675,13 @@ main {
   gap: 20px;
   margin: 15px 0 30px;
 }
+.page-heading.editor-heading {
+  flex-direction: row;
+  align-items: center;
+}
+.editor-heading .page-title {
+  margin: 0;
+}
 .actions {
   display: flex;
   gap: 8px;
