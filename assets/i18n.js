@@ -1,6 +1,5 @@
 export const messages = {
   en: {
-    heroTag: 'Made for playing together',
     heroOne: 'Big questions.',
     heroTwo: 'Bigger energy.',
     heroCopy:
@@ -148,7 +147,6 @@ export const messages = {
     unanswered: 'No answer',
   },
   tr: {
-    heroTag: 'Birlikte oynamak için',
     heroOne: 'Büyük sorular.',
     heroTwo: 'Daha büyük heyecan.',
     heroCopy:

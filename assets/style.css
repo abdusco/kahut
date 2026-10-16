@@ -356,18 +356,6 @@ main {
   width: 350px;
   height: 350px;
 }
-.hero .hero-badge {
-  color: #ffffff;
-  background: #ffffff19;
-  border: 1px solid #ffffff25;
-  border-radius: 30px;
-  padding: 10px 14px;
-  letter-spacing: 0.06em;
-}
-.hero-badge .live-dot {
-  background: #d8ff72;
-  box-shadow: 0 0 0 4px #d8ff721a;
-}
 .eyebrow {
   font-size: 0.71rem;
   font-weight: 800;
@@ -1483,10 +1471,6 @@ main {
   .hero {
     padding: 26px 22px;
     border-radius: 26px;
-  }
-  .hero-badge {
-    font-size: 0.6rem;
-    padding: 8px 10px;
   }
   .hero-copy {
     font-size: 1rem;
