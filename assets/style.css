@@ -578,6 +578,19 @@ main > section[hidden] {
   gap: 12px;
   margin-top: 23px;
 }
+.lobby-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 23px;
+}
+.lobby-actions .wide {
+  flex: 1 1 auto;
+  width: auto;
+  margin-top: 0;
+}
+.lobby-actions .danger {
+  flex: 0 0 auto;
+}
 .wide.quiet,
 .wide.outline {
   justify-content: center;

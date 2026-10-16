@@ -503,13 +503,20 @@
                       ></span></div
                   ></template>
                 </div>
-                <button
-                  class="primary wide"
-                  x-show="isHost"
-                  :disabled="!ready || busy || !state.players.length"
-                  @click="act('start')"
-                  x-text="t('startGame')"
-                ></button>
+                <div class="lobby-actions" x-show="isHost">
+                  <button
+                    class="outline danger"
+                    :disabled="!ready || busy"
+                    @click="finishGame()"
+                    x-text="t('endGame')"
+                  ></button
+                  ><button
+                    class="primary wide"
+                    :disabled="!ready || busy || !state.players.length"
+                    @click="act('start')"
+                    x-text="t('startGame')"
+                  ></button>
+                </div>
                 <p class="waiting-label" x-show="!isHost" x-text="t('waitingHost')"></p>
               </div>
             </div>
@@ -681,7 +688,7 @@
             <div class="room-footer">
               <button
                 class="outline danger small"
-                x-show="isHost && state.phase!=='finished'"
+                x-show="isHost && state.phase!=='lobby' && state.phase!=='finished'"
                 :disabled="!ready || busy"
                 @click="finishGame()"
                 x-text="t('endGame')"
