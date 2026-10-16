@@ -1,0 +1,7 @@
+assets/vendor/
+node_modules/
+bun.lock
+go.sum
+data/
+test-results/
+playwright-report/

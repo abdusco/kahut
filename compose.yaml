@@ -1,0 +1,21 @@
+services:
+  kahut:
+    build: .
+    ports:
+      - '${HOST_PORT:-8080}:8080'
+    environment:
+      HOST_PASSWORD: '${HOST_PASSWORD:?Set HOST_PASSWORD}'
+      DB_PATH: /data/kahut.db
+    volumes:
+      - kahut-data:/data
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+
+volumes:
+  kahut-data:

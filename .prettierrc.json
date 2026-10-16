@@ -1,0 +1,6 @@
+{
+  "singleQuote": true,
+  "trailingComma": "all",
+  "printWidth": 90,
+  "overrides": [{ "files": "*.webmanifest", "options": { "parser": "json" } }]
+}

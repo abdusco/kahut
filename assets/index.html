@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#5536d9" />
+    <meta
+      name="description"
+      content="A little friendly competition. Host a quiz, join your friends, and climb the leaderboard."
+    />
+    <title>kahut · A little friendly competition</title>
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script src="/boot.js"></script>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/vendor/qrcode-1.4.4.js" defer></script>
+    <script src="/app.js" type="module"></script>
+  </head>
+  <body x-data="quizApp" :class="{ 'in-game': view === 'room' }">
+    <header class="site-header">
+      <a href="/" class="logo" @click.prevent="home()" aria-label="kahut home"
+        ><img
+          class="hat-mark"
+          src="/icons/hat.svg"
+          width="45"
+          height="38"
+          alt=""
+        />kahut<span class="logo-dot">.</span></a
+      >
+      <nav class="preferences" aria-label="Preferences">
+        <button
+          class="small quiet"
+          x-show="installPrompt"
+          x-cloak
+          @click="install()"
+          x-text="t('install')"
+        ></button>
+        <select aria-label="Language" x-model="language" @change="savePreferences()">
+          <option value="en">EN</option>
+          <option value="tr">TR</option>
+        </select>
+        <select :aria-label="t('theme')" x-model="theme" @change="savePreferences()">
+          <option value="system" x-text="t('system')"></option>
+          <option value="light" x-text="t('light')"></option>
+          <option value="dark" x-text="t('dark')"></option>
+        </select>
+        <button
+          class="quiet small"
+          x-show="hostToken"
+          x-cloak
+          :disabled="busy"
+          @click="logout()"
+          x-text="t('signOut')"
+        ></button>
+      </nav>
+    </header>
+    <main x-cloak>
+      <div class="notice error" role="alert" x-show="error">
+        <span x-text="error"></span
+        ><button class="quiet small" @click="error=''" :aria-label="t('dismiss')">
+          ×
+        </button>
+      </div>
+      <div class="notice" role="status" x-show="message" x-text="message"></div>
+      <div class="notice" x-show="!online" x-text="t('offline')"></div>
+
+      <section x-show="view === 'home'" class="home-grid">
+        <div class="hero">
+          <span class="eyebrow"
+            ><span class="live-dot"></span> <span x-text="t('heroTag')"></span
+          ></span>
+          <h1>
+            <span x-text="t('heroOne')"></span><br /><em x-text="t('heroTwo')"></em>
+          </h1>
+          <p class="hero-copy" x-text="t('heroCopy')"></p>
+          <div class="answer-art" aria-hidden="true">
+            <div class="art-card red">▲</div>
+            <div class="art-card blue">◆</div>
+            <div class="art-card gold">●</div>
+            <div class="art-card green">■</div>
+            <span class="art-spark">✳</span>
+          </div>
+          <div class="hero-notes">
+            <span x-text="t('noAccount')"></span
+            ><span>↗ <span x-text="t('livePlay')"></span></span>
+          </div>
+        </div>
+        <div class="join-stack">
+          <form class="panel join-panel" @submit.prevent="join()">
+            <div class="section-number">01 / <span x-text="t('letsPlay')"></span></div>
+            <h2 x-text="t('joinGame')"></h2>
+            <p class="muted" x-text="t('joinCopy')"></p>
+            <label for="room-code" x-text="t('roomCode')"></label
+            ><input
+              id="room-code"
+              class="code-input"
+              x-model="code"
+              maxlength="8"
+              placeholder="ABCD1234"
+              autocomplete="off"
+              autocapitalize="characters"
+              required
+            />
+            <label for="nickname" x-text="t('nickname')"></label
+            ><input
+              id="nickname"
+              x-model="nickname"
+              maxlength="24"
+              :placeholder="t('nicknameHint')"
+              autocomplete="nickname"
+              required
+            />
+            <button class="primary wide" :disabled="busy || !online" type="submit">
+              <span x-text="t('joinGame')"></span><span>→</span>
+            </button>
+            <button
+              type="button"
+              class="quiet wide"
+              x-show="savedRoom"
+              @click="resumeSaved()"
+              x-text="t('resumeGame')"
+            ></button>
+          </form>
+          <div class="host-callout">
+            <span
+              ><strong x-text="t('yourQuiz')"></strong><br /><span
+                class="muted"
+                x-text="t('hostCopy')"
+              ></span></span
+            ><button class="outline" @click="openHost()" x-text="t('host')"></button>
+          </div>
+        </div>
+      </section>
+
+      <section x-show="view === 'login'" class="narrow">
+        <button class="quiet" @click="home()">← <span x-text="t('home')"></span></button>
+        <form class="panel" @submit.prevent="login()">
+          <span class="eyebrow" x-text="t('hostDesk')"></span>
+          <h1 class="page-title" x-text="t('welcomeHost')"></h1>
+          <p class="muted" x-text="t('passwordCopy')"></p>
+          <label for="password" x-text="t('hostPassword')"></label
+          ><input
+            id="password"
+            type="password"
+            x-model="password"
+            autocomplete="current-password"
+            required
+          /><button
+            class="primary wide"
+            :disabled="busy || !online"
+            x-text="t('signIn')"
+          ></button>
+        </form>
+      </section>
+
+      <section x-show="view === 'library'">
+        <div class="page-heading">
+          <div>
+            <span class="eyebrow" x-text="t('hostDesk')"></span>
+            <h1 class="page-title" x-text="t('yourQuizzes')"></h1>
+            <p class="muted" x-text="t('libraryCopy')"></p>
+          </div>
+          <div class="actions">
+            <button
+              class="outline"
+              :disabled="busy || !online"
+              @click="openImport()"
+              x-text="t('import')"
+            ></button
+            ><button class="primary" @click="newQuiz()" x-text="t('newQuiz')"></button>
+          </div>
+        </div>
+        <div class="quiz-grid">
+          <template x-for="(quiz,i) in quizzes" :key="quiz.id"
+            ><article class="panel quiz-card">
+              <div class="quiz-illustration" :class="'illustration-'+i%3">
+                <span x-text="['✳','◆','◒'][i%3]"></span
+                ><span class="quiz-count"
+                  ><span x-text="quiz.questions.length"></span>
+                  <span x-text="t('questions')"></span
+                ></span>
+              </div>
+              <h2 x-text="quiz.title"></h2>
+              <div class="actions">
+                <button
+                  class="primary"
+                  :disabled="busy || !online"
+                  @click="hostQuiz(quiz.id)"
+                  x-text="t('play')"
+                ></button
+                ><button
+                  class="outline"
+                  @click="editQuiz(quiz)"
+                  x-text="t('edit')"
+                ></button
+                ><button
+                  class="quiet small"
+                  :disabled="busy"
+                  @click="exportQuiz(quiz)"
+                  x-text="t('export')"
+                ></button
+                ><button
+                  class="quiet small danger"
+                  :disabled="busy"
+                  @click="deleteQuiz(quiz)"
+                  x-text="t('delete')"
+                ></button>
+              </div></article
+          ></template>
+          <div x-show="!quizzes.length" class="panel empty">
+            <span class="empty-symbol">✳</span>
+            <h2 x-text="t('blankQuiz')"></h2>
+            <p class="muted" x-text="t('blankCopy')"></p>
+            <button class="primary" @click="newQuiz()" x-text="t('newQuiz')"></button
+            ><button class="quiet" @click="sampleQuiz()" x-text="t('trySample')"></button>
+          </div>
+        </div>
+        <div class="page-heading history-heading">
+          <div>
+            <span class="eyebrow" x-text="t('pastAndPresent')"></span>
+            <h2 x-text="t('games')"></h2>
+          </div>
+          <button
+            class="quiet"
+            :disabled="busy || !online"
+            @click="loadLibrary()"
+            x-text="t('refresh')"
+          ></button>
+        </div>
+        <div class="panel">
+          <p class="muted" x-show="!games.length" x-text="t('noGames')"></p>
+          <template x-for="game in games" :key="game.code"
+            ><div class="history-row">
+              <div>
+                <strong x-text="game.title"></strong>
+                <div class="muted">
+                  <span x-text="game.code"></span> ·
+                  <span x-text="t(game.phase)"></span> ·
+                  <span x-text="game.playerCount"></span>
+                  <span x-text="t('players')"></span>
+                </div>
+              </div>
+              <button
+                class="outline small"
+                @click="game.phase==='finished' ? showHistory(game.code) : enterRoom(game.code, true)"
+                x-text="game.phase==='finished' ? t('results') : t('resumeGame')"
+              ></button></div
+          ></template>
+        </div>
+      </section>
+
+      <section x-show="view === 'editor' && draft">
+        <div class="page-heading">
+          <div>
+            <button class="quiet" @click="backToLibrary()">
+              ← <span x-text="t('library')"></span>
+            </button>
+            <h1 class="page-title" x-text="draft?.id ? t('editQuiz') : t('newQuiz')"></h1>
+          </div>
+          <button
+            class="primary"
+            :disabled="busy || !online"
+            @click="saveQuiz()"
+            x-text="t('saveQuiz')"
+          ></button>
+        </div>
+        <template x-if="draft"
+          ><div class="editor">
+            <div class="panel">
+              <label for="quiz-title" x-text="t('quizTitle')"></label
+              ><input
+                id="quiz-title"
+                x-model="draft.title"
+                maxlength="120"
+                :placeholder="t('quizTitleHint')"
+              />
+            </div>
+            <template x-for="(q,i) in draft.questions" :key="i"
+              ><article class="panel question-editor">
+                <div class="row">
+                  <span class="eyebrow"
+                    ><span x-text="t('question')"></span> <span x-text="i+1"></span
+                  ></span>
+                  <div class="actions">
+                    <button
+                      class="quiet small"
+                      :disabled="i===0"
+                      @click="moveQuestion(i,-1)"
+                      :aria-label="t('moveUp')"
+                    >
+                      ↑</button
+                    ><button
+                      class="quiet small"
+                      :disabled="i===draft.questions.length-1"
+                      @click="moveQuestion(i,1)"
+                      :aria-label="t('moveDown')"
+                    >
+                      ↓</button
+                    ><button
+                      class="quiet small danger"
+                      :disabled="draft.questions.length===1"
+                      @click="draft.questions.splice(i,1)"
+                      x-text="t('remove')"
+                    ></button>
+                  </div>
+                </div>
+                <label :for="'question-'+i" x-text="t('questionText')"></label
+                ><textarea
+                  :id="'question-'+i"
+                  x-model="q.text"
+                  maxlength="1000"
+                  rows="2"
+                ></textarea>
+                <p class="muted small-text" x-text="t('markCorrect')"></p>
+                <div class="choice-editor-grid">
+                  <template x-for="(choice,j) in q.choices" :key="j"
+                    ><div class="choice-editor" :class="'choice-'+j">
+                      <input
+                        type="radio"
+                        :name="'correct-'+i"
+                        :value="j"
+                        x-model.number="q.correctIndex"
+                        :aria-label="t('correctAnswer')+' '+(j+1)"
+                      /><input
+                        type="text"
+                        x-model="q.choices[j]"
+                        maxlength="300"
+                        :aria-label="t('choice')+' '+(j+1)"
+                      /><button
+                        class="quiet small"
+                        :disabled="q.choices.length<=2"
+                        @click="removeChoice(q,j)"
+                        :aria-label="t('removeChoice')"
+                      >
+                        ×
+                      </button>
+                    </div></template
+                  >
+                </div>
+                <div class="row wrap">
+                  <button
+                    class="quiet small"
+                    x-show="q.choices.length<4"
+                    @click="q.choices.push('')"
+                    x-text="t('addChoice')"
+                  ></button
+                  ><label class="timer-label"
+                    ><span x-text="t('seconds')"></span
+                    ><input
+                      type="number"
+                      min="5"
+                      max="120"
+                      x-model.number="q.timeLimitSeconds"
+                  /></label>
+                </div></article></template
+            ><button
+              class="outline wide"
+              :disabled="draft.questions.length>=100"
+              @click="draft.questions.push(blankQuestion())"
+              x-text="t('addQuestion')"
+            ></button></div
+        ></template>
+      </section>
+
+      <section x-show="view === 'room'">
+        <div class="room-topline">
+          <span class="eyebrow"
+            ><span class="live-dot" :class="{'disconnected': !ready}"></span>
+            <span x-text="ready ? t('live') : t('connecting')"></span></span
+          ><span class="room-code"
+            ><span x-text="t('room')"></span> <strong x-text="code"></strong></span
+          ><button
+            class="quiet small"
+            x-show="isHost"
+            @click="backToLibrary()"
+            x-text="t('library')"
+          ></button>
+        </div>
+        <div class="panel connecting" x-show="!state">
+          <div class="spinner"></div>
+          <h2 x-text="t('connecting')"></h2>
+          <p class="muted" x-text="t('connectingCopy')"></p>
+        </div>
+        <template x-if="state"
+          ><div>
+            <div class="game-title">
+              <h1 class="page-title" x-text="state.title"></h1>
+              <span class="pill" x-text="t(state.phase)"></span>
+            </div>
+            <div class="lobby-grid" x-show="state.phase === 'lobby'">
+              <div class="panel invitation">
+                <span class="eyebrow" x-text="t('inviteFriends')"></span>
+                <h2 x-text="t('roomCode')"></h2>
+                <div class="big-code" x-text="state.code"></div>
+                <canvas
+                  x-ref="qrCanvas"
+                  width="196"
+                  height="196"
+                  :aria-label="t('inviteQR')"
+                  role="img"
+                ></canvas
+                ><label for="invite-url" x-text="t('inviteLink')"></label
+                ><input
+                  id="invite-url"
+                  readonly
+                  :value="inviteURL"
+                  @click="$event.target.select()"
+                /><button
+                  class="outline wide"
+                  @click="copyInvite()"
+                  x-text="t('copyLink')"
+                ></button>
+              </div>
+              <div class="panel lobby-players">
+                <div class="row">
+                  <h2>
+                    <span x-text="t('players')"></span>
+                    <span class="count-badge" x-text="state.players.length"></span>
+                  </h2>
+                  <span class="muted" x-text="t('readyWhenYouAre')"></span>
+                </div>
+                <p
+                  class="muted"
+                  x-show="!state.players.length"
+                  x-text="t('waitingPlayers')"
+                ></p>
+                <div class="player-chips">
+                  <template x-for="p in state.players" :key="p.id"
+                    ><div class="player-chip">
+                      <span class="presence" :class="{'online':p.online}"></span
+                      ><strong x-text="p.name"></strong
+                      ><span
+                        class="you-label"
+                        x-show="p.id===state.playerId"
+                        x-text="t('you')"
+                      ></span></div
+                  ></template>
+                </div>
+                <button
+                  class="primary wide"
+                  x-show="isHost"
+                  :disabled="!ready || busy || !state.players.length"
+                  @click="act('start')"
+                  x-text="t('startGame')"
+                ></button>
+                <p class="waiting-label" x-show="!isHost" x-text="t('waitingHost')"></p>
+              </div>
+            </div>
+            <div x-show="state.phase !== 'lobby'">
+              <div class="question-meta">
+                <span class="eyebrow"
+                  ><span x-text="t('question')"></span>
+                  <span x-text="state.questionIndex+1"></span> /
+                  <span x-text="state.questionCount"></span></span
+                ><span class="countdown" x-show="state.phase==='question'"
+                  ><span x-text="remaining"></span>s</span
+                >
+              </div>
+              <div class="timer-track" x-show="state.phase==='question'">
+                <div :style="'width:'+timePercent+'%'"></div>
+              </div>
+              <div class="panel question-panel">
+                <h2 x-text="state.question?.text"></h2>
+                <p
+                  class="answer-status"
+                  role="status"
+                  x-show="state.phase==='question'"
+                  x-text="isHost ? answeredCount+' / '+eligibleCount+' '+t('answered') : !state.eligible ? t('waitNext') : state.answered ? t('answerLocked') : t('chooseAnswer')"
+                ></p>
+                <div class="answer-grid">
+                  <template x-for="(choice,i) in (state.question?.choices || [])" :key="i"
+                    ><button
+                      class="answer-button"
+                      :class="{['choice-'+i]:true, selected:state.myChoice===i, correct:state.phase!=='question' && state.question.correctIndex===i, faded:state.phase!=='question' && state.question.correctIndex!==i}"
+                      :disabled="isHost || state.phase!=='question' || !state.eligible || state.answered || busy || !ready || remaining<=0"
+                      @click="answer(i)"
+                    >
+                      <span class="answer-shape" x-text="['▲','◆','●','■'][i]"></span
+                      ><span class="answer-text" x-text="choice"></span
+                      ><span class="answer-count" x-show="state.phase!=='question'"
+                        ><span x-text="state.question.counts?.[i] || 0"></span>
+                        <span x-show="state.question.correctIndex===i">✓</span></span
+                      >
+                    </button></template
+                  >
+                </div>
+                <div class="personal-result" x-show="!isHost && state.phase!=='question'">
+                  <strong
+                    x-text="state.answered ? '+'+(state.myPoints||0)+' '+t('points') : t('noAnswer')"
+                  ></strong
+                  ><span
+                    x-show="state.answered"
+                    x-text="state.myChoice===state.question?.correctIndex ? t('niceWork') : t('nextTime')"
+                  ></span>
+                </div>
+              </div>
+              <div class="host-controls" x-show="isHost">
+                <button
+                  class="primary"
+                  x-show="state.phase==='question'"
+                  :disabled="!ready || busy"
+                  @click="act('close')"
+                  x-text="t('closeQuestion')"
+                ></button
+                ><button
+                  class="primary"
+                  x-show="state.phase==='results'"
+                  :disabled="!ready || busy"
+                  @click="act('leaderboard')"
+                  x-text="t('showLeaderboard')"
+                ></button
+                ><button
+                  class="primary"
+                  x-show="state.phase==='leaderboard'"
+                  :disabled="!ready || busy"
+                  @click="act('next')"
+                  x-text="state.questionIndex+1===state.questionCount ? t('showPodium') : t('nextQuestion')"
+                ></button>
+              </div>
+            </div>
+            <div class="panel scoreboard" x-show="state.phase !== 'lobby'">
+              <span
+                class="eyebrow"
+                x-show="state.phase==='finished'"
+                x-text="t('thatsAWrap')"
+              ></span>
+              <h2
+                x-text="state.phase==='finished' ? t('podium') : t('leaderboardTitle')"
+              ></h2>
+              <div class="podium" x-show="state.phase==='finished'">
+                <template x-for="p in state.players.slice(0,3)" :key="p.id"
+                  ><div class="podium-person" :class="'place-'+p.rank">
+                    <span class="medal" x-text="p.rank===1 ? '★' : p.rank"></span
+                    ><strong x-text="p.name"></strong
+                    ><span x-text="p.score+' '+t('points')"></span></div
+                ></template>
+              </div>
+              <template x-for="p in state.players" :key="p.id"
+                ><div class="score-row" :class="{'my-row':p.id===state.playerId}">
+                  <span class="rank" x-text="String(p.rank).padStart(2,'0')"></span
+                  ><span class="presence" :class="{'online':p.online}"></span
+                  ><strong x-text="p.name"></strong
+                  ><span
+                    class="you-label"
+                    x-show="p.id===state.playerId"
+                    x-text="t('you')"
+                  ></span
+                  ><span
+                    class="muted small-text"
+                    x-show="state.phase==='question' && p.answered"
+                    >✓</span
+                  ><span
+                    class="score"
+                    x-text="p.score.toLocaleString(language)"
+                  ></span></div
+              ></template>
+            </div>
+            <div class="room-footer">
+              <button
+                class="quiet danger small"
+                x-show="isHost && state.phase!=='finished'"
+                :disabled="!ready || busy"
+                @click="finishGame()"
+                x-text="t('endGame')"
+              ></button
+              ><button
+                class="outline"
+                x-show="state.phase==='finished'"
+                @click="isHost ? backToLibrary() : home()"
+                x-text="isHost ? t('backToLibrary') : t('playAgain')"
+              ></button>
+            </div></div
+        ></template>
+      </section>
+
+      <section x-show="view==='history' && historyGame">
+        <div class="page-heading">
+          <div>
+            <button class="quiet" @click="backToLibrary()">
+              ← <span x-text="t('library')"></span>
+            </button>
+            <h1 class="page-title" x-text="historyGame?.game.title"></h1>
+            <p class="muted" x-text="t('savedResults')"></p>
+          </div>
+        </div>
+        <template x-if="historyGame"
+          ><div>
+            <div class="panel scoreboard">
+              <h2 x-text="t('leaderboardTitle')"></h2>
+              <template x-for="p in historyGame.snapshot.players" :key="p.id"
+                ><div class="score-row">
+                  <span class="rank" x-text="p.rank"></span
+                  ><strong x-text="p.name"></strong
+                  ><span class="score" x-text="p.score"></span></div
+              ></template>
+            </div>
+            <template x-for="(q,i) in historyGame.game.quiz.questions" :key="i"
+              ><article class="panel history-question">
+                <span class="eyebrow"
+                  ><span x-text="t('question')"></span> <span x-text="i+1"></span
+                ></span>
+                <h2 x-text="q.text"></h2>
+                <p>
+                  <span x-text="t('correctAnswer')"></span>:
+                  <strong x-text="q.choices[q.correctIndex]"></strong>
+                </p>
+                <template x-for="p in historyGame.game.players" :key="p.id"
+                  ><div class="history-row">
+                    <strong x-text="p.name"></strong
+                    ><span x-text="historicalAnswer(p.id,i,q)"></span></div
+                ></template></article
+            ></template></div
+        ></template>
+      </section>
+    </main>
+    <dialog
+      class="import-dialog"
+      x-ref="importDialog"
+      aria-labelledby="import-heading"
+      @cancel="if(busy) $event.preventDefault()"
+    >
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow" x-text="t('quizLibrary')"></span>
+          <h2 id="import-heading" x-text="t('import')"></h2>
+        </div>
+        <button
+          class="quiet"
+          :disabled="busy"
+          @click="$refs.importDialog.close()"
+          :aria-label="t('dismiss')"
+        >
+          ×
+        </button>
+      </div>
+      <p class="muted" x-text="t('importInstructions')"></p>
+      <div
+        class="notice error"
+        role="alert"
+        x-show="importError"
+        x-text="importError"
+      ></div>
+      <label for="import-json" x-text="t('quizJSON')"></label>
+      <textarea
+        id="import-json"
+        class="json-textarea"
+        x-model="importText"
+        rows="14"
+        spellcheck="false"
+        autofocus
+        :disabled="busy"
+        :placeholder="t('pasteJSON')"
+        @paste="pasteImport($event)"
+        @dragover.prevent
+        @drop.prevent="loadImportFile($event.dataTransfer.files[0])"
+      ></textarea>
+      <label for="import-file" x-text="t('loadJSONFile')"></label>
+      <input
+        id="import-file"
+        type="file"
+        accept="application/json,.json"
+        :disabled="busy"
+        @change="loadImportFile($event.target.files[0]); $event.target.value=''"
+      />
+      <details class="ai-prompt" open>
+        <summary x-text="t('generateWithAI')"></summary>
+        <p class="muted small-text" x-text="t('aiInstructions')"></p>
+        <label for="ai-prompt-text" x-text="t('aiPrompt')"></label
+        ><textarea
+          id="ai-prompt-text"
+          class="json-textarea prompt-textarea"
+          rows="8"
+          readonly
+          :value="aiPrompt"
+          x-ref="aiPrompt"
+        ></textarea>
+        <div class="row wrap">
+          <button
+            class="outline small"
+            @click="copyPrompt()"
+            x-text="t('copyPrompt')"
+          ></button
+          ><span role="status" class="muted small-text" x-text="promptCopyStatus"></span>
+        </div>
+      </details>
+      <div class="dialog-actions">
+        <button
+          class="outline"
+          :disabled="busy"
+          @click="$refs.importDialog.close()"
+          x-text="t('cancel')"
+        ></button
+        ><button
+          class="primary"
+          :disabled="busy || !online || !importText.trim()"
+          @click="importQuiz()"
+          x-text="t('importQuiz')"
+        ></button>
+      </div>
+    </dialog>
+    <footer class="site-footer"><span>kahut.</span><span>✳</span></footer>
+    <noscript>This app needs JavaScript to join and host live quizzes.</noscript>
+  </body>
+</html>
