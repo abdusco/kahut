@@ -47,6 +47,65 @@ func TestOpenRouterGenerate(t *testing.T) {
 	}
 }
 
+func noisePNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	src := image.NewNRGBA(image.Rect(0, 0, w, h))
+	noise := rand.New(rand.NewPCG(1, 2))
+	for y := range h {
+		for x := range w {
+			src.Set(x, y, color.NRGBA{R: uint8(noise.IntN(256)), G: uint8(noise.IntN(256)), B: uint8(noise.IntN(256)), A: 255})
+		}
+	}
+	var out bytes.Buffer
+	if err := png.Encode(&out, src); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+func TestNormalizeImageResizes(t *testing.T) {
+	dims := func(data []byte) (string, int, int) {
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return format, cfg.Width, cfg.Height
+	}
+	for _, c := range []struct{ w, h, wantW, wantH int }{
+		{1024, 1024, 600, 600}, // square
+		{1888, 1216, 800, 515}, // landscape, limited by width
+		{832, 1280, 520, 800},  // portrait, 600x800 box limited by height
+		{1344, 768, 800, 457},  // 16:9
+		{400, 300, 400, 300},   // already small: PNG still becomes JPEG, same size
+	} {
+		format, w, h := dims(normalizeImage(noisePNG(t, c.w, c.h)))
+		if format != "jpeg" || abs(w-c.wantW) > 1 || abs(h-c.wantH) > 1 {
+			t.Errorf("%dx%d -> %s %dx%d, want jpeg %dx%d", c.w, c.h, format, w, h, c.wantW, c.wantH)
+		}
+		if w*h >= 1_000_000 {
+			t.Errorf("%dx%d -> %d pixels, want under 1 MP", c.w, c.h, w*h)
+		}
+	}
+	// A JPEG that already fits is returned byte for byte.
+	small := normalizeImage(noisePNG(t, 300, 200))
+	if got := normalizeImage(small); !bytes.Equal(got, small) {
+		t.Error("fitting JPEG was re-encoded")
+	}
+	// A large JPEG is shrunk.
+	var big bytes.Buffer
+	_ = jpeg.Encode(&big, image.NewRGBA(image.Rect(0, 0, 1600, 1200)), nil)
+	if _, w, h := dims(normalizeImage(big.Bytes())); w != 800 || h != 600 {
+		t.Errorf("JPEG shrunk to %dx%d", w, h)
+	}
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
 func TestPNGToJPEG(t *testing.T) {
 	// Noisy, so PNG compresses poorly and JPEG is smaller.
 	src := image.NewNRGBA(image.Rect(0, 0, 200, 200))
@@ -65,7 +124,7 @@ func TestPNGToJPEG(t *testing.T) {
 	if err := png.Encode(&pngData, src); err != nil {
 		t.Fatal(err)
 	}
-	out := pngToJPEG(pngData.Bytes())
+	out := normalizeImage(pngData.Bytes())
 	if http.DetectContentType(out) != "image/jpeg" || len(out) >= pngData.Len() {
 		t.Fatalf("type %s, %d -> %d bytes", http.DetectContentType(out), pngData.Len(), len(out))
 	}
@@ -80,12 +139,12 @@ func TestPNGToJPEG(t *testing.T) {
 
 	// Anything else passes through untouched.
 	for _, in := range [][]byte{[]byte("not an image"), out, []byte("\x89PNG\r\n\x1a\nbroken")} {
-		if got := pngToJPEG(in); !bytes.Equal(got, in) {
+		if got := normalizeImage(in); !bytes.Equal(got, in) {
 			t.Fatalf("changed %q", in[:8])
 		}
 	}
 	// A PNG that JPEG cannot shrink is kept: tinyPNG is 67 bytes.
-	if got := pngToJPEG(tinyPNG); !bytes.Equal(got, tinyPNG) {
+	if got := normalizeImage(tinyPNG); !bytes.Equal(got, tinyPNG) {
 		t.Fatal("tiny PNG was replaced by a larger JPEG")
 	}
 }
