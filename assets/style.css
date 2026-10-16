@@ -836,6 +836,10 @@ main {
   font-size: 3rem;
   color: var(--primary);
 }
+.empty-actions {
+  justify-content: center;
+  gap: 20px;
+}
 .history-heading {
   margin-top: 50px;
 }

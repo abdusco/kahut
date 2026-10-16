@@ -220,8 +220,14 @@
             <span class="empty-symbol">✳</span>
             <h2 x-text="t('blankQuiz')"></h2>
             <p class="muted" x-text="t('blankCopy')"></p>
-            <button class="primary" @click="newQuiz()" x-text="t('newQuiz')"></button
-            ><button class="quiet" @click="sampleQuiz()" x-text="t('trySample')"></button>
+            <div class="actions empty-actions">
+              <button class="primary" @click="newQuiz()" x-text="t('newQuiz')"></button>
+              <button
+                class="quiet"
+                @click="sampleQuiz()"
+                x-text="t('trySample')"
+              ></button>
+            </div>
           </div>
         </div>
         <div class="page-heading history-heading">
